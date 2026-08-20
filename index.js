@@ -1,4 +1,5 @@
-import 'dotenv/config';import express from 'express';
+import 'dotenv/config';
+import express from 'express';
 import session from 'express-session';
 import helmet from 'helmet';
 import { open } from 'sqlite';
@@ -26,17 +27,11 @@ if (!SESSION_SECRET || !ADMIN_PASSWORD) {
 }
 
 const app = express();
-app.set('trust proxy', 1); // pra secure:true no cookie funcionar atrás do Caddy/reverse proxy
+app.set('trust proxy', 1); 
 
+//  segurança 
 app.use(helmet({ contentSecurityPolicy: false }));
 
-// Força HTTPS em produção (a app confia no cabeçalho do proxy pra saber se já veio por HTTPS).
-app.use((req, res, next) => {
-  if (process.env.NODE_ENV === 'production' && !req.secure) {
-    return res.redirect(`https://${req.headers.host}${req.url}`);
-  }
-  next();
-});
 
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
@@ -55,7 +50,7 @@ app.use(express.static('public'));
 
 const db = await open({ filename: './xitike.db', driver: sqlite3.Database });
 
-// --- Rate limit simples pra tentativas de login (em memória, por IP) ---
+//  limite pra tentativas de login 
 const tentativasLogin = new Map();
 const LIMITE_TENTATIVAS = 5;
 const JANELA_MS = 15 * 60 * 1000; // 15 min
@@ -68,9 +63,7 @@ function verificarLogin(req, res, next) {
 app.get('/login', (req, res) => res.render('login', { erro: null }));
 
 app.post('/login', async (req, res) => {
-  // Honeypot: campo escondido do CSS, invisível pra gente mas visível pra bots
-  // que preenchem formulários às cegas. Se vier preenchido, é bot — rejeita
-  // sem dar pista nenhuma de que foi detetado.
+
   if (req.body.website) {
     return res.render('login', { erro: 'Palavra-passe incorreta. Tenta novamente.' });
   }
@@ -187,7 +180,7 @@ function obterIpLocal() {
       }
     }
   }
-  // Prefere adaptadores de WiFi/Ethernet reais; ignora os virtuais (VirtualBox, VMware, Hyper-V etc).
+
   const virtual = /virtualbox|vmware|hyper-v|vethernet|loopback|docker/i;
   const preferido = candidatos.find(c => !virtual.test(c.nome));
   return (preferido || candidatos[0])?.endereco || null;
@@ -218,9 +211,7 @@ app.post('/admin/logo', verificarLogin, upload.single('logo'), (req, res) => {
   res.redirect('/admin');
 });
 
-// --- Webhook pro Atalho do iPhone da Célia ---
-// O Atalho manda POST aqui sempre que chega uma SMS de M-Pesa/e-Mola.
-// Protegido por um token simples no cabeçalho Authorization.
+
 app.post('/api/gateway/sms', express.json(), async (req, res) => {
   console.log('--- Webhook /api/gateway/sms recebeu uma chamada ---');
   const tokenEsperado = process.env.WEBHOOK_TOKEN;

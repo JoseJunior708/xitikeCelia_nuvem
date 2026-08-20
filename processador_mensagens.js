@@ -6,7 +6,9 @@ import sqlite3 from 'sqlite3';
 import qrcode from 'qrcode-terminal';
 import { createWorker } from 'tesseract.js';
 
-
+// Números autorizados a confirmar pagamento (a Célia). Configurado no .env,
+// separados por vírgula, sem prefixo 258 nem espaços — ex: 865222317,866690083
+// Não precisa mexer em código nem no telemóvel dela pra adicionar/trocar um número.
 const NUMEROS_AUTORIZADOS = (process.env.NUMEROS_AUTORIZADOS || '')
   .split(',')
   .map(n => normalizarNumero(n))
@@ -18,6 +20,11 @@ if (NUMEROS_AUTORIZADOS.length === 0) {
   console.log('Números autorizados (admin):', NUMEROS_AUTORIZADOS);
 }
 
+// Números oficiais da Célia (M-Pesa/e-Mola) pra onde os clientes devem
+// transferir. Configurado no .env, sem prefixo 258 — ex: 847050293,846555876
+// Comprovativo de cliente com destino fora desta lista = aviso (pode ser erro
+// honesto). Comprovativo reciclado (mesmo ID já usado) = ban na hora, isso não
+// tem como ser engano.
 const NUMEROS_RECEBIMENTO_CELIA = (process.env.NUMEROS_RECEBIMENTO_CELIA || '')
   .split(',')
   .map(n => n.replace(/\D/g, ''))
@@ -125,7 +132,7 @@ function normalizarTexto(str) {
 }
 
 /**
- * Tenta conectarr o nome que veio na SMS (ex: "MARTIN AGOSTINHO BANZE") com o
+ * Tenta casar o nome que veio na SMS (ex: "MARTIN AGOSTINHO BANZE") com o
  * nome que cada membro já tem no WhatsApp. Só aceita se exatamente UM
  * membro tiver pelo menos uma palavra em comum (com 3+ letras, pra evitar
  * bater em "de", "da", etc). Se zero ou mais de um baterem, fica ambíguo.
@@ -272,15 +279,15 @@ async function tratarMensagem(sock, db, msg) {
       text:
         'Comandos do Xitike:\n' +
         '!novo Nome Valor DiasAteReceber — cria um xitique (admin)\n' +
-        '!ordem 840000000 3 — define a posição desse membro na fila de recebimento (admin)\n' +
+        '!ordem 84XXXXXXX 3 — define a posição desse membro na fila de recebimento (admin)\n' +
         '!fila — mostra a ordem de quem recebe o pote\n' +
-        '!recebeu 840000000 — marca que esse membro recebeu o pote nesta rodada e avança a fila (admin)\n' +
-        '!cadastrar 840000000 Nome Completo — regista um membro que ainda não escreveu no grupo (admin)\n' +
+        '!recebeu 84XXXXXXX — marca que esse membro recebeu o pote nesta rodada e avança a fila (admin)\n' +
+        '!cadastrar 84XXXXXXX Nome Completo — regista um membro que ainda não escreveu no grupo (admin)\n' +
         '!pagos (seguido de uma linha "numero Nome valor" por membro) — importa em massa quem já pagou (admin)\n' +
-        '!atribuir IDTransacao 845490083 — atribui manualmente um pagamento pendente a um membro (admin)\n' +
-        '!banir 840000000— remove um membro do grupo manualmente (admin)\n' +
+        '!atribuir IDTransacao 84XXXXXXX — atribui manualmente um pagamento pendente a um membro (admin)\n' +
+        '!banir 84XXXXXXX — remove um membro do grupo manualmente (admin)\n' +
         '!bloqueados — lista quem foi sinalizado por reciclar comprovativo (admin)\n' +
-        '!desbloquear 840000000 — tira alguém da lista de sinalizados (admin)\n' +
+        '!desbloquear 84XXXXXXX — tira alguém da lista de sinalizados (admin)\n' +
         '!pendentes — lista pagamentos que a Célia ainda precisa atribuir\n' +
         '!resumo — mostra a situação de cada membro\n' +
         'Cliente: cola aqui a tua SMS de confirmação de pagamento (M-Pesa/e-Mola).\n' +
@@ -331,12 +338,12 @@ async function tratarMensagem(sock, db, msg) {
     return;
   }
 
-  // --- !recebeu — admin confirma que alguém recebeu 
+  // --- !recebeu — admin confirma que alguém recebeu o pote e avança a rodada ---
   if (texto.startsWith('!recebeu')) {
     if (!ehAdmin) return;
     const numeroAlvo = texto.split(' ').filter(Boolean)[1];
     if (!numeroAlvo) {
-      await sock.sendMessage(idConversa, { text: 'Uso correto: !recebeu 845490083' });
+      await sock.sendMessage(idConversa, { text: 'Uso correto: !recebeu 84XXXXXXX' });
       return;
     }
     const jidAlvo = numeroAlvo.includes('@') ? numeroAlvo : `${numeroAlvo.replace(/\D/g, '')}@s.whatsapp.net`;
@@ -423,8 +430,8 @@ async function tratarMensagem(sock, db, msg) {
   // --- !pagos — admin importa em massa quem já pagou (uma linha por membro) ---
   // Formato, uma linha por membro:
   //   !pagos
-  //   866690083 Nome Completo 100
-  //   845490083 Outro Nome 100
+  //   84XXXXXXX Nome Completo 100
+  //   84YYYYYYY Outro Nome 100
   // O valor no fim de cada linha é o total já pago por essa pessoa até agora.
   // Não passa pela checagem de destino/duplicado — é registo manual da Célia,
   // que já validou essas transações antes do bot existir.
@@ -539,7 +546,7 @@ async function tratarMensagem(sock, db, msg) {
         [idConversa, remetente, nomeContato, texto]
       );
       await sock.sendMessage(idConversa, {
-        text: `${nomeContato}, Recebi a tua mensagem mas não consegui reconhecer o formato do comprovativo. Confirma manualmente com a Célia por agora! Este caso vai ser reportado pra corrigirmos o reconhecimento automático.`
+        text: `${nomeContato}, recebi a tua mensagem mas não consegui reconhecer o formato do comprovativo. Confirma manualmente com a Célia por agora — este caso vai ser reportado pra corrigirmos o reconhecimento automático.`
       });
     }
     return;
@@ -581,9 +588,9 @@ async function tratarMensagem(sock, db, msg) {
     [confirmacao.id_transacao, idConversa, remetente, confirmacao.valor, texto]
   );
 
-  // --- "Recebeste" postado por um MEMBRO comum 
-  // Interpretamos isto como prova de ter recebido
- //só conta se o dinheiro veio de um número conhecido da Célia.
+  // --- "Recebeste" postado por um MEMBRO comum (não a Célia) ---
+  // Interpretamos isto como prova de ter recebido o POTE da rodada (não uma
+  // contribuição) — só conta se o dinheiro veio de um número conhecido da Célia.
   if (confirmacao.tipo === 'recebido' && !ehAdmin) {
     const numeroOrigemNormalizado = normalizarNumero(confirmacao.remetente_numero);
     const veioDaCelia = NUMEROS_RECEBIMENTO_CELIA.length > 0 && NUMEROS_RECEBIMENTO_CELIA.includes(numeroOrigemNormalizado);
@@ -606,8 +613,8 @@ async function tratarMensagem(sock, db, msg) {
     const webhookAtivo = !!process.env.WEBHOOK_TOKEN;
 
     if (webhookAtivo) {
-      // Modo seguro: só valida se a mesma transação já tiver chegado como
-      // SMS no celular da Célia (via Atalho). Sem isso, fica à espera.
+      // Modo seguro: só credita se a mesma transação já tiver chegado como
+      // SMS real no telemóvel da Célia (via Atalho). Sem isso, fica à espera.
       const smsReal = await db.get('SELECT * FROM sms_celia WHERE id_transacao = ? AND usado = 0', [confirmacao.id_transacao]);
 
       if (!smsReal) {
@@ -690,6 +697,9 @@ export async function iniciarWhatsApp() {
     const sock = makeWASocket({ auth: state, version, printQRInTerminal: false });
     sockAtual = sock;
 
+    // Se NUMERO_BOT estiver no .env, usa código de pareamento (só letras/números,
+    // curto) em vez do QR — o QR em ASCII quebra fácil em logs de serviços de
+    // nuvem tipo Render, onde as linhas ficam cortadas/enroladas.
     const numeroBot = (process.env.NUMERO_BOT || '').replace(/\D/g, '');
     if (!state.creds.registered && numeroBot) {
       setTimeout(async () => {
@@ -741,14 +751,14 @@ export async function iniciarWhatsApp() {
 /**
  * Processa uma SMS de "Recebeste" vinda diretamente do telemóvel da Célia
  * (via Atalhos do iPhone → webhook). Isto NUNCA escolhe o grupo/membro
- * sozinho por nome — quem diz o grupo certo é sempre o cliente, ao colar a
+ * sozinho por nome — quem diz o grupo certo é sempre o cliente, ao postar a
  * confirmação lá dentro (uma pessoa pode estar em vários xitiques ao mesmo
  * tempo, então adivinhar pelo nome não é seguro).
  *
  * Em vez disso, esta função só guarda a SMS real e cruza pelo ID da
- * transação: se um cliente já tinha colado a confirmação num grupo e
+ * transação: se um cliente já tinha postado a confirmação num grupo e
  * estava à espera, completa o pagamento agora. Se ainda não postou, fica
- * guardada à espera de alguém colar.
+ * guardada à espera de alguém postar.
  */
 export async function processarSmsExterna(texto) {
   const db = await getDb();
