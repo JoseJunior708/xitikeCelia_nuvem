@@ -1,12 +1,16 @@
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 
-async function inicializarBaseDados() {
-  const db = await open({
-    filename: './xitike.db',
-    driver: sqlite3.Database
-  });
+async function garantirColuna(db, tabela, coluna, definicaoSql) {
+  const colunas = await db.all(`PRAGMA table_info(${tabela})`);
+  const existe = colunas.some(c => c.name === coluna);
+  if (!existe) {
+    await db.exec(`ALTER TABLE ${tabela} ADD COLUMN ${coluna} ${definicaoSql}`);
+    console.log(`Coluna "${coluna}" adicionada à tabela "${tabela}".`);
+  }
+}
 
+export async function criarTabelas(db) {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS grupos (
       id_grupo TEXT PRIMARY KEY,
@@ -17,7 +21,6 @@ async function inicializarBaseDados() {
       codigo TEXT UNIQUE
     )
   `);
-
   await db.exec(`
     CREATE TABLE IF NOT EXISTS membros (
       id_whatsapp TEXT NOT NULL,
@@ -57,7 +60,6 @@ async function inicializarBaseDados() {
       FOREIGN KEY (id_grupo) REFERENCES grupos(id_grupo)
     )
   `);
-
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS membros_bloqueados (
@@ -108,10 +110,20 @@ async function inicializarBaseDados() {
       status TEXT DEFAULT 'CONFIRMADO'
     )
   `);
-  // Registo de auditoria de toda confirmação processada (evita duplicados).
+  await garantirColuna(db, 'grupos', 'rodada_atual', 'INTEGER DEFAULT 1');
+  await garantirColuna(db, 'grupos', 'codigo', 'TEXT');
+  await garantirColuna(db, 'membros', 'divida', 'REAL DEFAULT 0.0');
+  await garantirColuna(db, 'membros', 'credito', 'REAL DEFAULT 0.0');
+  await garantirColuna(db, 'membros', 'ultimo_pagamento', 'TEXT');
+  await garantirColuna(db, 'membros', 'ordem', 'INTEGER');
+  await garantirColuna(db, 'membros', 'ultima_rodada_recebida', 'INTEGER');
+  await garantirColuna(db, 'membros', 'numero_pagamento', 'TEXT');
 
-  console.log("Base de dados do Xitike criada/atualizada com sucesso!");
-  await db.close();
+  console.log('Base de dados do Xitike verificada/atualizada com sucesso.');
 }
 
-inicializarBaseDados();
+if (process.argv[1] && process.argv[1].endsWith('init_db.js')) {
+  const db = await open({ filename: './xitike.db', driver: sqlite3.Database });
+  await criarTabelas(db);
+  await db.close();
+}
