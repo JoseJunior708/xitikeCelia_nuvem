@@ -4,13 +4,24 @@
   <meta charset="UTF-8" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { darkMode: 'media' }</script>
-  <title>Xitike Célia</title>
+  <title>Xitike Célia — Painel</title>
 </head>
 <body class="bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 min-h-screen transition-colors duration-500">
 
   <main class="max-w-5xl mx-auto p-6 md:py-12">
     <header class="mb-10 flex items-center justify-between flex-wrap gap-4">
       <div class="flex items-center gap-4">
+        <div class="relative">
+          <button type="button" onclick="document.getElementById('menuPontos').classList.toggle('hidden')"
+                  title="Mais opções" class="w-9 h-9 flex items-center justify-center rounded-full hover:bg-zinc-800 text-2xl leading-none font-black text-zinc-400">
+            ⋮
+          </button>
+          <div id="menuPontos" class="hidden absolute left-0 top-11 z-10 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl overflow-hidden text-sm font-bold w-40">
+            <a href="/admin/pagamentos" class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800 text-zinc-200">Pendentes</a>
+            <a href="/admin/bloqueados" class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800 text-red-400">Bloqueados</a>
+          </div>
+        </div>
+
         <div class="relative">
           <button type="button" onclick="document.getElementById('menuLogo').classList.toggle('hidden')"
                   title="Ver ou trocar a foto" class="block w-14 h-14">
@@ -105,7 +116,7 @@
               <span class="font-bold"><%= membro.ordem ? `${membro.ordem}. ` : '' %><%= membro.nome %></span>
               <span class="text-lg tracking-wider">
                 <% if (membro.diasPagos > 0) { %>
-                  <%= .repeat(membro.diasPagos) %>
+                  <%= '✅'.repeat(membro.diasPagos) %>
                 <% } else { %>
                   <span class="text-xs font-black uppercase tracking-wider text-zinc-500">Sem pagamentos ainda</span>
                 <% } %>
