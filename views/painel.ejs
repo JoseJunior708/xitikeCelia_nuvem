@@ -11,37 +11,9 @@
 
   <main class="max-w-5xl mx-auto p-6 md:py-12">
     <header class="mb-10 flex items-center justify-between flex-wrap gap-4">
+      
+      <!-- Lado Esquerdo: Logotipo/Foto e Título -->
       <div class="flex items-center gap-4">
-        <!-- Menu dos 3 pontos (Esquerda) com Pagamentos e Sair -->
-        <div class="relative">
-          <button type="button" onclick="document.getElementById('menuPontos').classList.toggle('hidden')"
-                  title="Mais opções" class="w-9 h-9 flex items-center justify-center rounded-full hover:bg-zinc-800 text-2xl leading-none font-black text-zinc-400">
-            ⋮
-          </button>
-          <div id="menuPontos" class="hidden absolute left-0 top-11 z-10 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl overflow-hidden text-sm font-bold w-44">
-            <a href="/admin/pagamentos" class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800 text-zinc-200">Pagamentos</a>
-            <a href="/admin/bloqueados" class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800 text-red-400">Bloqueados</a>
-            <form method="POST" action="/logout">
-              <button type="submit" class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800 text-zinc-400">Sair</button>
-            </form>
-          </div>
-        </div>
-
-        <div>
-          <h1 class="text-3xl font-black">Xitike <span class="text-pink-600"> Célia</span></h1>
-          <p class="text-zinc-500">Gestão dos Grupos e dos Valores.</p>
-        </div>
-      </div>
-
-      <!-- Lado Direito: Apenas o indicador do sistema e o Logotipo/Foto -->
-      <div class="flex items-center gap-4">
-        <div class="flex items-center gap-2 bg-zinc-900 px-4 py-2 rounded-full border border-zinc-800">
-          <div class="w-2.5 h-2.5 rounded-full <%= botOnline ? 'bg-emerald-500 animate-pulse' : 'bg-red-500' %>"></div>
-          <span class="text-xs font-bold uppercase tracking-wider text-zinc-400">
-            <%= botOnline ? 'Sistema Online' : 'Sistema Offline' %>
-          </span>
-        </div>
-
         <div class="relative">
           <button type="button" onclick="document.getElementById('menuLogo').classList.toggle('hidden')"
                   title="Ver ou trocar a foto" class="block w-14 h-14">
@@ -53,7 +25,7 @@
                    class="w-14 h-14 rounded-full object-cover absolute inset-0">
             </div>
           </button>
-          <div id="menuLogo" class="hidden absolute right-0 top-16 z-10 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl overflow-hidden text-sm font-bold w-36">
+          <div id="menuLogo" class="hidden absolute left-0 top-16 z-10 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl overflow-hidden text-sm font-bold w-36">
             <button type="button"
                     onclick="if(document.getElementById('logoImg').style.display==='block'){window.open('/logo','_blank')}; document.getElementById('menuLogo').classList.add('hidden')"
                     class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800">Ver foto</button>
@@ -66,7 +38,38 @@
                    class="hidden" onchange="this.form.submit()">
           </form>
         </div>
+
+        <div>
+          <h1 class="text-3xl font-black">Xitike <span class="text-pink-600"> Célia</span></h1>
+          <p class="text-zinc-500">Gestão dos Grupos e dos Valores.</p>
+        </div>
       </div>
+
+      <!-- Lado Direito: Status e Menu de 3 Pontos -->
+      <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2 bg-zinc-900 px-4 py-2 rounded-full border border-zinc-800">
+          <div class="w-2.5 h-2.5 rounded-full <%= botOnline ? 'bg-emerald-500 animate-pulse' : 'bg-red-500' %>"></div>
+          <span class="text-xs font-bold uppercase tracking-wider text-zinc-400">
+            <%= botOnline ? 'Sistema Online' : 'Sistema Offline' %>
+          </span>
+        </div>
+
+        <!-- Menu dos 3 pontos -->
+        <div class="relative">
+          <button type="button" onclick="document.getElementById('menuPontos').classList.toggle('hidden')"
+                  title="Mais opções" class="w-9 h-9 flex items-center justify-center rounded-full hover:bg-zinc-800 text-2xl leading-none font-black text-zinc-400">
+            ⋮
+          </button>
+          <div id="menuPontos" class="hidden absolute right-0 top-11 z-10 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl overflow-hidden text-sm font-bold w-44">
+            <a href="/admin/pagamentos" class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800 text-zinc-200">Pendentes</a>
+            <a href="/admin/bloqueados" class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800 text-red-400">Bloqueados</a>
+            <form method="POST" action="/logout">
+              <button type="submit" class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800 text-zinc-400">Sair</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      
     </header>
 
     <% if (painelGrupos.length === 0) { %>
