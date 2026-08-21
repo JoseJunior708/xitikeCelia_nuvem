@@ -11,9 +11,10 @@
 
   <main class="max-w-5xl mx-auto p-6 md:py-12">
     <header class="mb-10 flex items-center justify-between flex-wrap gap-4">
-      
-      <!-- Lado Esquerdo: Logotipo/Foto e Título -->
+
       <div class="flex items-center gap-4">
+        
+        <!-- Foto -->
         <div class="relative">
           <button type="button" onclick="document.getElementById('menuLogo').classList.toggle('hidden')"
                   title="Ver ou trocar a foto" class="block w-14 h-14">
@@ -28,7 +29,7 @@
           <div id="menuLogo" class="hidden absolute left-0 top-16 z-10 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl overflow-hidden text-sm font-bold w-36">
             <button type="button"
                     onclick="if(document.getElementById('logoImg').style.display==='block'){window.open('/logo','_blank')}; document.getElementById('menuLogo').classList.add('hidden')"
-                    class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800">Ver foto</button>
+                    class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800 text-zinc-200">Ver foto</button>
             <button type="button"
                     onclick="document.getElementById('inputLogo').click(); document.getElementById('menuLogo').classList.add('hidden')"
                     class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800 text-pink-500">Trocar foto</button>
@@ -45,23 +46,28 @@
         </div>
       </div>
 
-      <!-- Lado Direito: Status e Menu de 3 Pontos -->
       <div class="flex items-center gap-4">
-        <div class="flex items-center gap-2 bg-zinc-900 px-4 py-2 rounded-full border border-zinc-800">
+        
+        <!-- Status do Bot (Escondido em ecrãs muito pequenos para poupar espaço) -->
+        <div class="hidden sm:flex items-center gap-2 bg-zinc-900 px-4 py-2 rounded-full border border-zinc-800">
           <div class="w-2.5 h-2.5 rounded-full <%= botOnline ? 'bg-emerald-500 animate-pulse' : 'bg-red-500' %>"></div>
           <span class="text-xs font-bold uppercase tracking-wider text-zinc-400">
             <%= botOnline ? 'Sistema Online' : 'Sistema Offline' %>
           </span>
         </div>
 
-        <!-- Menu dos 3 pontos -->
+        <!-- Botão Pendentes -->
+        <a href="/admin/pendentes" class="flex items-center gap-2 px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/20 rounded-xl text-sm font-bold transition-colors">
+          Pendentes
+        </a>
+
         <div class="relative">
           <button type="button" onclick="document.getElementById('menuPontos').classList.toggle('hidden')"
-                  title="Mais opções" class="w-9 h-9 flex items-center justify-center rounded-full hover:bg-zinc-800 text-2xl leading-none font-black text-zinc-400">
+                  title="Mais opções" class="w-10 h-10 flex items-center justify-center rounded-xl bg-zinc-800 hover:bg-zinc-700 text-2xl leading-none font-black text-zinc-300 transition-colors">
             ⋮
           </button>
-          <div id="menuPontos" class="hidden absolute right-0 top-11 z-10 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl overflow-hidden text-sm font-bold w-44">
-            <a href="/admin/pagamentos" class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800 text-zinc-200">Pendentes</a>
+          <div id="menuPontos" class="hidden absolute right-0 top-12 z-10 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl overflow-hidden text-sm font-bold w-44">
+            <a href="/admin/pagamentos" class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800 text-zinc-200">Pagamentos</a>
             <a href="/admin/bloqueados" class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800 text-red-400">Bloqueados</a>
             <form method="POST" action="/logout">
               <button type="submit" class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800 text-zinc-400">Sair</button>
