@@ -6,7 +6,6 @@ import sqlite3 from 'sqlite3';
 import qrcode from 'qrcode-terminal';
 import { createWorker } from 'tesseract.js';
 
-// Números autorizados a confirmar pagamento 
 const NUMEROS_AUTORIZADOS = (process.env.NUMEROS_AUTORIZADOS || '')
   .split(',')
   .map(n => normalizarNumero(n))
@@ -59,19 +58,24 @@ function extrairMPesaRecebido(texto) {
 }
 
 function extrairEMolaRecebido(texto) {
-  const m = texto.match(
+  // Formato conta pessoal
+  let m = texto.match(
     /ID d[ae] tran[sç]?acao:?\s*([a-zA-Z0-9.]+)\.\s*Recebeste\s+(\d+(?:[.,]\d{1,2})?)\s*MT\s+de conta\s+(\d{6,12}),\s*nome:\s*([^.]+?)\s+as\s+/is
   );
-  if (!m) return null;
-  return {
-    tipo: 'recebido',
-    id_transacao: m[1],
-    valor: parseFloat(m[2].replace(',', '.')),
-    remetente_numero: m[3],
-    remetente_nome: m[4].trim()
-  };
-}
+  if (m) {
+    return { tipo: 'recebido', id_transacao: m[1], valor: parseFloat(m[2].replace(',', '.')), remetente_numero: m[3], remetente_nome: m[4].trim() };
+  }
 
+  // Formato conta empresarial
+  m = texto.match(
+    /ID Trans:\s*([a-zA-Z0-9.]+)\.\s*Recebeu\s+(\d+(?:[.,]\d{1,2})?)\s*MT\s+de\s+(\d{6,12}),\s*([^.]+?)\s+as\s+/is
+  );
+  if (m) {
+    return { tipo: 'recebido', id_transacao: m[1], valor: parseFloat(m[2].replace(',', '.')), remetente_numero: m[3], remetente_nome: m[4].trim() };
+  }
+
+  return null;
+}
 function extrairMPesaEnviado(texto) {
   const m = texto.match(
     /Confirmado\s+([A-Z0-9]{8,15})\.\s*Transferiste\s+(\d+(?:[.,]\d{1,2})?)\s*MT.*?para\s+(\d{6,12})/is
@@ -81,12 +85,13 @@ function extrairMPesaEnviado(texto) {
 }
 
 function extrairEMolaEnviado(texto) {
-  
+  // Variante 1
   let m = texto.match(
     /ID d[ae] tran[sç]?acao:?\s*([a-zA-Z0-9.]+)\..*?para o \w+\s+(\d{6,12}).*?montante:\s*(\d+(?:[.,]\d{1,2})?)\s*MT/is
   );
   if (m) return { tipo: 'enviado', id_transacao: m[1], destino: m[2], valor: parseFloat(m[3].replace(',', '.')) };
 
+  // Variante 2
   m = texto.match(
     /ID d[ae] tran[sç]?acao:?\s*([a-zA-Z0-9.]+)\.\s*Transferiste\s+(\d+(?:[.,]\d{1,2})?)\s*MT\s+para conta\s+(\d{6,12})/is
   );
@@ -122,6 +127,7 @@ function encontrarMembroPorNome(nomeNaSms, membros) {
   return { membro: null, ambiguo: candidatos.length > 1 };
 }
 
+
 function aplicarPagamento(membro, valorPago, valorDiario) {
   const novoTotalPago = (membro.total_pago || 0) + valorPago;
   const diasPagos = Math.floor(novoTotalPago / valorDiario);
@@ -130,7 +136,7 @@ function aplicarPagamento(membro, valorPago, valorDiario) {
 }
 
 // Monta a lista de todos os membros do grupo com o checklist de dias pagos,
-// no formato "Nome ✅✅✅". 
+// no formato "Nome ✅✅✅"
 async function gerarListaChecklist(db, idGrupo, valorDiario) {
   const membros = await db.all('SELECT nome, total_pago FROM membros WHERE id_grupo = ?', [idGrupo]);
   if (membros.length === 0) return '(nenhum membro registado ainda)';
@@ -179,7 +185,7 @@ async function tratarMensagem(sock, db, msg) {
 
   const idConversa = msg.key.remoteJid;
   const ehGrupo = idConversa?.endsWith('@g.us');
-  
+
   let remetente = ehGrupo ? msg.key.participant : msg.key.remoteJid;
   if (remetente?.endsWith('@lid')) {
     remetente = (ehGrupo ? msg.key.participantAlt : msg.key.remoteJidAlt) || remetente;
@@ -214,7 +220,7 @@ async function tratarMensagem(sock, db, msg) {
 
     if (!nome || Number.isNaN(valor) || Number.isNaN(dias)) {
       await sock.sendMessage(idConversa, {
-        text: 'Uso correto: !novo NomeDoGrupo Valor DiasAteReceber\nEx: !novo Familia85 100 15'
+        text: 'Uso correto: !novo NomeDoGrupo Valor DiasDoCiclo\nEx: !novo Familia85 100 30'
       });
       return;
     }
@@ -224,7 +230,7 @@ async function tratarMensagem(sock, db, msg) {
        ON CONFLICT(id_grupo) DO UPDATE SET nome_grupo=excluded.nome_grupo, valor_diario=excluded.valor_diario, dias_ciclo=excluded.dias_ciclo`,
       [idConversa, nome, valor, dias]
     );
-    await sock.sendMessage(idConversa, { text: `Xitique "${nome}" criado! ${valor}MT/dia, cada membro recebe a cada ${dias} dias.` });
+    await sock.sendMessage(idConversa, { text: `Xitique "${nome}" criado! ${valor}MT/dia.` });
     return;
   }
 
@@ -232,14 +238,11 @@ async function tratarMensagem(sock, db, msg) {
     await sock.sendMessage(idConversa, {
       text:
         'Comandos do Xitike:\n' +
-        '!novo Nome Valor DiasAteReceber — cria um xitique (admin)\n' +
-        '!ordem 840000000 3 — define a posição desse membro na fila de recebimento (admin)\n' +
-        '!fila — mostra a ordem de quem recebe o pote\n' +
-        '!recebeu 840000000 — marca que esse membro recebeu o pote nesta rodada e avança a fila (admin)\n' +
+        '!novo Nome Valor DiasCiclo — cria um xitique (admin)\n' +
         '!cadastrar 840000000 Nome Completo — regista um membro que ainda não escreveu no grupo (admin)\n' +
         '!pagos (seguido de uma linha "numero Nome valor" por membro) — importa em massa quem já pagou (admin)\n' +
         '!atribuir IDTransacao 840000000 — atribui manualmente um pagamento pendente a um membro (admin)\n' +
-        '!banir 8840000000 — remove um membro do grupo manualmente (admin)\n' +
+        '!banir 840000000 — remove um membro do grupo manualmente (admin)\n' +
         '!bloqueados — lista quem foi sinalizado por reciclar comprovativo (admin)\n' +
         '!desbloquear 840000000 — tira alguém da lista de sinalizados (admin)\n' +
         '!pendentes — lista pagamentos que a Célia ainda precisa atribuir\n' +
@@ -258,63 +261,17 @@ async function tratarMensagem(sock, db, msg) {
     return;
   }
 
-  if (texto.startsWith('!ordem')) {
-    if (!ehAdmin) return;
-    const partes = texto.split(' ').filter(Boolean);
-    const numeroAlvo = partes[1];
-    const posicao = parseInt(partes[2], 10);
-    if (!numeroAlvo || Number.isNaN(posicao)) {
-      await sock.sendMessage(idConversa, { text: 'Uso correto: !ordem 840000000 3' });
-      return;
-    }
-    const jidAlvo = numeroAlvo.includes('@') ? numeroAlvo : `${numeroAlvo.replace(/\D/g, '')}@s.whatsapp.net`;
-    const resultado = await db.run('UPDATE membros SET ordem = ? WHERE id_whatsapp = ? AND id_grupo = ?', [posicao, jidAlvo, idConversa]);
-    if (resultado.changes === 0) {
-      await sock.sendMessage(idConversa, { text: 'Não encontrei esse membro neste grupo. Ele já mandou alguma mensagem aqui?' });
-    } else {
-      await sock.sendMessage(idConversa, { text: `Posição ${posicao} atribuída.` });
-    }
-    return;
-  }
-  if (texto === '!fila') {
-    const membros = await db.all(
-      'SELECT nome, ordem, ultima_rodada_recebida FROM membros WHERE id_grupo = ? ORDER BY (ordem IS NULL), ordem ASC',
-      [idConversa]
-    );
-    const linhas = membros.map((m, i) => {
-      const jaRecebeu = m.ultima_rodada_recebida ? ' (já recebeu)' : '';
-      return `${m.ordem ?? i + 1}. ${m.nome}${jaRecebeu}`;
-    }).join('\n');
-    await sock.sendMessage(idConversa, { text: `Fila de recebimento (rodada ${grupo.rodada_atual}):\n${linhas || 'Ninguém na fila ainda.'}` });
-    return;
-  }
-
-  if (texto.startsWith('!recebeu')) {
-    if (!ehAdmin) return;
-    const numeroAlvo = texto.split(' ').filter(Boolean)[1];
-    if (!numeroAlvo) {
-      await sock.sendMessage(idConversa, { text: 'Uso correto: !recebeu 840000000' });
-      return;
-    }
-    const jidAlvo = numeroAlvo.includes('@') ? numeroAlvo : `${numeroAlvo.replace(/\D/g, '')}@s.whatsapp.net`;
-    await db.run('UPDATE membros SET ultima_rodada_recebida = ? WHERE id_whatsapp = ? AND id_grupo = ?', [grupo.rodada_atual, jidAlvo, idConversa]);
-    await db.run('UPDATE grupos SET rodada_atual = rodada_atual + 1 WHERE id_grupo = ?', [idConversa]);
-    await sock.sendMessage(idConversa, { text: `Registado. Xitike segue pra rodada ${grupo.rodada_atual + 1}.` });
-    return;
-  }
-
   const nomeContato = msg.pushName || remetente.split('@')[0];
   await db.run(
     `INSERT INTO membros (id_whatsapp, id_grupo, nome) VALUES (?, ?, ?)
      ON CONFLICT(id_whatsapp, id_grupo) DO NOTHING`,
     [remetente, idConversa, nomeContato]
   );
-
   if (texto.startsWith('!banir')) {
     if (!ehAdmin) return;
     const numeroAlvo = texto.split(' ').filter(Boolean)[1];
     if (!numeroAlvo) {
-      await sock.sendMessage(idConversa, { text: 'Uso correto: !banir840000000' });
+      await sock.sendMessage(idConversa, { text: 'Uso correto: !banir 840000000' });
       return;
     }
     const jidAlvo = numeroAlvo.includes('@') ? numeroAlvo : `${numeroAlvo.replace(/\D/g, '')}@s.whatsapp.net`;
@@ -327,6 +284,7 @@ async function tratarMensagem(sock, db, msg) {
     }
     return;
   }
+
   if (texto === '!bloqueados') {
     if (!ehAdmin) return;
     const bloqueados = await db.all('SELECT * FROM membros_bloqueados WHERE id_grupo = ?', [idConversa]);
@@ -338,6 +296,7 @@ async function tratarMensagem(sock, db, msg) {
     await sock.sendMessage(idConversa, { text: `Sinalizados:\n${linhas}\n\nUsa !desbloquear 840000000 pra limpar depois de reveres.` });
     return;
   }
+
   if (texto.startsWith('!desbloquear')) {
     if (!ehAdmin) return;
     const numeroAlvo = texto.split(' ').filter(Boolean)[1];
@@ -351,7 +310,6 @@ async function tratarMensagem(sock, db, msg) {
     return;
   }
 
-  // --- !cadastrar — admin regista um membro que ainda não escreveu no grupo ---
   if (texto.startsWith('!cadastrar')) {
     if (!ehAdmin) return;
     const partes = texto.split(' ').filter(Boolean);
@@ -376,7 +334,7 @@ async function tratarMensagem(sock, db, msg) {
     const linhas = texto.split('\n').slice(1).map(l => l.trim()).filter(Boolean);
     if (linhas.length === 0) {
       await sock.sendMessage(idConversa, {
-        text: 'Uso correto (uma linha por membro):\n!pagos\n84XXXXXXX Nome Completo 100\n84YYYYYYY Outro Nome 100'
+        text: 'Uso correto (uma linha por membro):\n!pagos\n840000000 Nome Completo 100\n840000000 Outro Nome 100'
       });
       return;
     }
@@ -428,20 +386,19 @@ async function tratarMensagem(sock, db, msg) {
     }
     if (pendentes.length > 0) {
       const linhas = pendentes.map(p => `${p.id_transacao} — ${p.valor}MT de "${p.remetente_nome}"`).join('\n');
-      resposta += `Precisam de atribuição manual (!atribuir IDTransacao 840000000):\n${linhas}`;
+      resposta += `Precisam de atribuição manual (!atribuir IDTransacao 84XXXXXXX):\n${linhas}`;
     }
     await sock.sendMessage(idConversa, { text: resposta.trim() });
     return;
   }
 
-  // --- !atribuir — admin liga manualmente um pagamento pendente a um membro ---
   if (texto.startsWith('!atribuir')) {
     if (!ehAdmin) return;
     const partes = texto.split(' ').filter(Boolean);
     const idTransacao = partes[1];
     const numeroAlvo = partes[2];
     if (!idTransacao || !numeroAlvo) {
-      await sock.sendMessage(idConversa, { text: 'Uso correto: !atribuir IDTransacao 840000000' });
+      await sock.sendMessage(idConversa, { text: 'Uso correto: !atribuir IDTransacao 84XXXXXXX' });
       return;
     }
     const pendente = await db.get('SELECT * FROM pagamentos_pendentes WHERE id_transacao = ? AND id_grupo = ?', [idTransacao, idConversa]);
@@ -490,25 +447,12 @@ async function tratarMensagem(sock, db, msg) {
   const jaRegistado = await db.get('SELECT 1 FROM sms_recebidos WHERE id_transacao = ?', [confirmacao.id_transacao]);
   if (jaRegistado) {
     if (confirmacao.tipo === 'enviado') {
-      const membroSuspeito = await db.get('SELECT * FROM membros WHERE id_whatsapp = ? AND id_grupo = ?', [remetente, idConversa]);
-      const jaRecebeuOPote = membroSuspeito?.ultima_rodada_recebida != null;
-
-      if (jaRecebeuOPote) {
- 
-        await db.run(
-          `INSERT INTO membros_bloqueados (id_whatsapp, id_grupo, nome, motivo) VALUES (?, ?, ?, ?)
-           ON CONFLICT(id_whatsapp, id_grupo) DO UPDATE SET motivo=excluded.motivo, criado_em=CURRENT_TIMESTAMP`,
-          [remetente, idConversa, nomeContato, `Reciclou o comprovativo ${confirmacao.id_transacao} (já tinha recebido o pote)`]
-        );
-        await sock.sendMessage(idConversa, { text: `${nomeContato}, este comprovativo (${confirmacao.id_transacao}) já foi usado antes. Como já recebeste o pote desta rodada, não vais ser removido automaticamente — isto foi sinalizado pra Célia rever.` });
-      } else {
-        await sock.sendMessage(idConversa, { text: `${nomeContato}, este comprovativo (${confirmacao.id_transacao}) já foi usado antes. Vais ser removido do grupo.` });
-        try {
-          await sock.groupParticipantsUpdate(idConversa, [remetente], 'remove');
-        } catch (erroRemocao) {
-          console.error('Não consegui remover o membro (o bot é admin do grupo?):', erroRemocao);
-          await sock.sendMessage(idConversa, { text: `Não consegui remover ${nomeContato} automaticamente — o Xitike precisa de ser admin do grupo pra isso.` });
-        }
+      await sock.sendMessage(idConversa, { text: `${nomeContato}, este comprovativo (${confirmacao.id_transacao}) já foi usado antes. Vais ser removido do grupo.` });
+      try {
+        await sock.groupParticipantsUpdate(idConversa, [remetente], 'remove');
+      } catch (erroRemocao) {
+        console.error('Não consegui remover o membro (o bot é admin do grupo?):', erroRemocao);
+        await sock.sendMessage(idConversa, { text: `Não consegui remover ${nomeContato} automaticamente — o Xitike precisa de ser admin do grupo pra isso.` });
       }
     } else {
       await sock.sendMessage(idConversa, { text: `Este comprovativo (${confirmacao.id_transacao}) já tinha sido registado antes. Não contado em duplicado.` });
@@ -521,25 +465,14 @@ async function tratarMensagem(sock, db, msg) {
   );
 
   if (confirmacao.tipo === 'recebido' && !ehAdmin) {
-    const numeroOrigemNormalizado = normalizarNumero(confirmacao.remetente_numero);
-    const veioDaCelia = NUMEROS_RECEBIMENTO_CELIA.length > 0 && NUMEROS_RECEBIMENTO_CELIA.includes(numeroOrigemNormalizado);
-
-    if (!veioDaCelia) {
-      await sock.sendMessage(idConversa, {
-        text: `Aviso: número errado. ${nomeContato} postou um comprovativo de recebimento, mas não veio de um número conhecido da Célia. Números corretos: ${NUMEROS_RECEBIMENTO_CELIA.join(', ') || '(nenhum configurado)'}. Não marcado automaticamente como pote recebido — a Célia confirma manualmente com !recebeu.`
-      });
-      return;
-    }
-
-    await db.run('UPDATE membros SET ultima_rodada_recebida = ? WHERE id_whatsapp = ? AND id_grupo = ?', [grupo.rodada_atual, remetente, idConversa]);
-    await db.run('UPDATE grupos SET rodada_atual = rodada_atual + 1 WHERE id_grupo = ?', [idConversa]);
-    await sock.sendMessage(idConversa, { text: `Confirmado: ${nomeContato} recebeu o pote desta rodada. Xitike segue pra rodada ${grupo.rodada_atual + 1}.` });
     return;
   }
+
   if (confirmacao.tipo === 'enviado') {
     const webhookAtivo = !!process.env.WEBHOOK_TOKEN;
 
     if (webhookAtivo) {
+
       const smsReal = await db.get('SELECT * FROM sms_celia WHERE id_transacao = ? AND usado = 0', [confirmacao.id_transacao]);
 
       if (!smsReal) {
@@ -582,6 +515,7 @@ async function tratarMensagem(sock, db, msg) {
     await sock.sendMessage(idConversa, { text: `Pagamento de ${confirmacao.valor}MT confirmado para ${nomeContato}.\n\n${lista}` });
     return;
   }
+
   const membrosDoGrupo = await db.all('SELECT * FROM membros WHERE id_grupo = ?', [idConversa]);
   const { membro, ambiguo } = encontrarMembroPorNome(confirmacao.remetente_nome, membrosDoGrupo);
 
@@ -608,6 +542,11 @@ async function tratarMensagem(sock, db, msg) {
 }
 
 let sockAtual = null;
+let qrAtual = null;
+
+export function obterQrAtual() {
+  return qrAtual;
+}
 
 export async function iniciarWhatsApp() {
   const db = await getDb();
@@ -618,28 +557,20 @@ export async function iniciarWhatsApp() {
     console.log('Usando versão do protocolo WhatsApp:', version.join('.'));
     const sock = makeWASocket({ auth: state, version, printQRInTerminal: false });
     sockAtual = sock;
-    const numeroBot = (process.env.NUMERO_BOT || '').replace(/\D/g, '');
-    if (!state.creds.registered && numeroBot) {
-      setTimeout(async () => {
-        try {
-          const codigoPareamento = await sock.requestPairingCode(numeroBot);
-          console.log('CÓDIGO DE PAREAMENTO:', codigoPareamento);
-          console.log('No WhatsApp do número', numeroBot, ':');
-          console.log('Aparelhos ligados > Ligar aparelho > Ligar com número de telefone');
-        } catch (erro) {
-          console.error('Erro ao pedir código de pareamento:', erro);
-        }
-      }, 3000);
-    }
 
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', (update) => {
       const { connection, lastDisconnect, qr } = update;
 
-      if (qr && !numeroBot) {
-        console.log('\nEscaneia este QR code com o WhatsApp (Aparelhos ligados > Ligar aparelho):\n');
-        qrcode.generate(qr, { small: true });
+      if (qr) {
+        qrAtual = qr;
+        console.log('\nNovo QR code disponível. Abre /qr no painel web pra escanear (dá pra usar a câmara direto, sem pressa).\n');
+        qrcode.generate(qr, { small: true }); 
+      }
+
+      if (connection === 'open') {
+        qrAtual = null; 
       }
 
       if (connection === 'close') {
@@ -663,6 +594,7 @@ export async function iniciarWhatsApp() {
 
   await conectar();
 }
+
 export async function processarSmsExterna(texto) {
   const db = await getDb();
 
@@ -680,7 +612,6 @@ export async function processarSmsExterna(texto) {
     `INSERT INTO sms_celia (id_transacao, valor, remetente_nome, remetente_numero) VALUES (?, ?, ?, ?)`,
     [confirmacao.id_transacao, confirmacao.valor, confirmacao.remetente_nome, confirmacao.remetente_numero]
   );
-
   const reivindicacao = await db.get('SELECT * FROM reivindicacoes_pendentes WHERE id_transacao = ?', [confirmacao.id_transacao]);
   if (!reivindicacao) {
     return { ok: true, status: 'guardado', motivo: 'nenhum cliente postou esta confirmação ainda' };
