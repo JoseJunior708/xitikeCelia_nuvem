@@ -2,75 +2,70 @@
 <html lang="pt" class="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { darkMode: 'media' }</script>
   <title>Xitike Célia — Painel</title>
 </head>
 <body class="bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 min-h-screen transition-colors duration-500">
 
-  <main class="max-w-5xl mx-auto p-4 sm:p-6 md:py-12">
-    <!-- Removido o flex-wrap para garantir que fica tudo na mesma linha -->
-    <header class="mb-10 flex items-center justify-between gap-2">
+  <main class="max-w-5xl mx-auto p-6 md:py-12">
+    <header class="mb-10 flex items-center justify-between flex-wrap gap-4">
+      <div class="flex items-center gap-4">
+        <div class="relative">
+          <button type="button" onclick="document.getElementById('menuPontos').classList.toggle('hidden')"
+                  title="Mais opções" class="w-9 h-9 flex items-center justify-center rounded-full hover:bg-zinc-800 text-2xl leading-none font-black text-zinc-400">
+            ⋮
+          </button>
+          <div id="menuPontos" class="hidden absolute left-0 top-11 z-10 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl overflow-hidden text-sm font-bold w-40">
+            <a href="/admin/pagamentos" class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800 text-zinc-200">Pendentes</a>
+            <a href="/admin/bloqueados" class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800 text-red-400">Bloqueados</a>
+          </div>
+        </div>
 
-      <div class="flex items-center gap-3 sm:gap-4 flex-1 overflow-hidden">
-
-        <div class="relative flex-shrink-0">
+        <div class="relative">
           <button type="button" onclick="document.getElementById('menuLogo').classList.toggle('hidden')"
-                  title="Ver ou trocar a foto" class="block w-12 h-12 sm:w-14 sm:h-14">
-            <div class="w-full h-full rounded-full bg-zinc-800 border-2 border-pink-500 flex items-center justify-center text-sm font-black text-pink-500 overflow-hidden hover:opacity-75 transition-opacity relative">
+                  title="Ver ou trocar a foto" class="block w-14 h-14">
+            <div class="w-14 h-14 rounded-full bg-zinc-800 border-2 border-pink-500 flex items-center justify-center text-sm font-black text-pink-500 overflow-hidden hover:opacity-75 transition-opacity">
               <span id="logoIniciais">XC</span>
               <img src="/logo" alt="Logo" style="display:none" id="logoImg"
                    onload="document.getElementById('logoIniciais').style.display='none'; this.style.display='block';"
                    onerror="this.style.display='none'"
-                   class="w-full h-full rounded-full object-cover absolute inset-0">
+                   class="w-14 h-14 rounded-full object-cover absolute inset-0">
             </div>
           </button>
-          <div id="menuLogo" class="hidden absolute left-0 top-16 z-50 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden text-sm font-bold w-36">
+          <div id="menuLogo" class="hidden absolute left-0 top-16 z-10 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl overflow-hidden text-sm font-bold w-36">
             <button type="button"
                     onclick="if(document.getElementById('logoImg').style.display==='block'){window.open('/logo','_blank')}; document.getElementById('menuLogo').classList.add('hidden')"
-                    class="block w-full text-left px-4 py-3 hover:bg-zinc-800 text-zinc-200">Ver foto</button>
+                    class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800">Ver foto</button>
             <button type="button"
                     onclick="document.getElementById('inputLogo').click(); document.getElementById('menuLogo').classList.add('hidden')"
-                    class="block w-full text-left px-4 py-3 hover:bg-zinc-800 text-pink-500">Trocar foto</button>
+                    class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800 text-pink-500">Trocar foto</button>
+            <button type="submit" form="formRemoverLogo"
+                    class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800 text-red-400">Tirar foto</button>
           </div>
           <form method="POST" action="/admin/logo" enctype="multipart/form-data" id="formLogo">
             <input type="file" id="inputLogo" name="logo" accept="image/png,image/jpeg,image/webp"
                    class="hidden" onchange="this.form.submit()">
           </form>
+          <form method="POST" action="/admin/logo/remover" id="formRemoverLogo"></form>
         </div>
-
-        <div class="truncate">
-          <h1 class="text-2xl sm:text-3xl font-black truncate">Xitike <span class="text-pink-600"> Célia</span></h1>
-          <p class="text-xs sm:text-sm text-zinc-500 truncate">Gestão dos Grupos e Valores.</p>
+        <div>
+          <h1 class="text-3xl font-black">Xitike Célia</h1>
+          <p class="text-zinc-500">Gestão dos Grupos e dos Valores.</p>
         </div>
       </div>
 
-      <div class="flex items-center gap-3 flex-shrink-0 relative">
-
-        <div class="hidden md:flex items-center gap-2 bg-zinc-900 px-4 py-2 rounded-full border border-zinc-800">
-          <div class="w-2 h-2 rounded-full <%= botOnline ? 'bg-emerald-500 animate-pulse' : 'bg-red-500' %>"></div>
-          <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-            <%= botOnline ? 'Online' : 'Offline' %>
+      <div class="flex items-center gap-3">
+        <a href="/admin/pagamentos" class="text-xs font-bold uppercase tracking-wider text-zinc-500 hover:text-pink-500 transition-colors">Pagamentos</a>
+        <div class="flex items-center gap-2 bg-zinc-900 px-4 py-2 rounded-full border border-zinc-800">
+          <div class="w-2.5 h-2.5 rounded-full <%= botOnline ? 'bg-emerald-500 animate-pulse' : 'bg-red-500' %>"></div>
+          <span class="text-xs font-bold uppercase tracking-wider text-zinc-400">
+            <%= botOnline ? 'Sistema Online' : 'Sistema Offline' %>
           </span>
         </div>
-
-        <div>
-          <button type="button" onclick="document.getElementById('menuPontos').classList.toggle('hidden')"
-                  title="Mais opções" class="w-12 h-12 flex items-center justify-center rounded-xl bg-zinc-800 hover:bg-zinc-700 text-2xl leading-none font-black text-zinc-300 transition-colors shadow-lg">
-            ⋮
-          </button>
-
-          <div id="menuPontos" class="hidden absolute right-0 top-14 z-50 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden text-sm font-bold w-48">     
-            <a href="/admin/pagamentos" class="block w-full text-left px-5 py-3.5 hover:bg-zinc-800 text-zinc-200">Pagamentos</a>
-            <a href="/admin/bloqueados" class="block w-full text-left px-5 py-3.5 hover:bg-zinc-800 text-red-400">Bloqueados</a>
-            <a href="/admin/pendentes" class="block w-full text-left px-5 py-3.5 hover:bg-zinc-800 text-amber-400 border-b border-zinc-800">Pendentes</a>
-            <form method="POST" action="/logout" class="border-t border-zinc-800 mt-1">
-              <button type="submit" class="block w-full text-left px-5 py-3.5 hover:bg-zinc-800 text-zinc-500">Sair</button>
-            </form>
-          </div>
-        </div>
-
+        <form method="POST" action="/logout">
+          <button type="submit" class="text-xs font-bold uppercase tracking-wider text-zinc-500 hover:text-pink-500 transition-colors">Sair</button>
+        </form>
       </div>
     </header>
 
@@ -79,31 +74,30 @@
     <% } %>
 
     <% painelGrupos.forEach(grupo => { %>
-      <div class="mb-10 p-5 sm:p-8 border-2 border-pink-500 rounded-3xl bg-white dark:bg-zinc-900 shadow-xl shadow-pink-500/5">
+      <div class="mb-10 p-8 border-2 border-pink-500 rounded-3xl bg-white dark:bg-zinc-900 shadow-xl shadow-pink-500/5">
 
         <div class="mb-8 border-b border-zinc-200 dark:border-zinc-800 pb-6">
-          <h2 class="text-xl sm:text-2xl font-black text-pink-600"><%= grupo.nome_grupo %></h2>
+          <h2 class="text-2xl font-black text-pink-600"><%= grupo.nome_grupo %></h2>
           <p class="text-sm font-medium mt-1">Valor diário: <span class="text-pink-500"><%= grupo.valor_diario %> MT</span></p>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-8">
-          <div class="p-5 sm:p-6 border border-zinc-200 dark:border-zinc-800 rounded-2xl">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div class="p-6 border border-zinc-200 dark:border-zinc-800 rounded-2xl">
             <p class="text-xs font-bold text-zinc-400 uppercase">Total Acumulado</p>
-            <p class="text-2xl sm:text-3xl font-black text-pink-600 mt-2"><%= (grupo.totalFaturado || 0).toLocaleString() %> <span class="text-xs sm:text-sm">MT</span></p>
+            <p class="text-3xl font-black text-pink-600 mt-2"><%= (grupo.totalFaturado || 0).toLocaleString() %> <span class="text-sm">MT</span></p>
           </div>
-          <div class="p-5 sm:p-6 border border-zinc-200 dark:border-zinc-800 rounded-2xl">
+          <div class="p-6 border border-zinc-200 dark:border-zinc-800 rounded-2xl">
             <p class="text-xs font-bold text-zinc-400 uppercase">Meta do Grupo</p>
-            <p class="text-2xl sm:text-3xl font-black mt-2"><%= (grupo.metaTotal || 0).toLocaleString() %> <span class="text-xs sm:text-sm">MT</span></p>
+            <p class="text-3xl font-black mt-2"><%= (grupo.metaTotal || 0).toLocaleString() %> <span class="text-sm">MT</span></p>
           </div>
-          <div class="p-5 sm:p-6 border border-zinc-200 dark:border-zinc-800 rounded-2xl">
+          <div class="p-6 border border-zinc-200 dark:border-zinc-800 rounded-2xl">
             <p class="text-xs font-bold text-zinc-400 uppercase">Membros</p>
-            <p class="text-2xl sm:text-3xl font-black mt-2"><%= grupo.membrosAtivos %></p>
+            <p class="text-3xl font-black mt-2"><%= grupo.membrosAtivos %></p>
           </div>
         </div>
 
-        <p class="text-xs font-bold text-zinc-400 uppercase mb-4">Rodada atual: <%= grupo.rodada_atual %></p>
 
-        <div class="mb-8 p-5 sm:p-6 border border-zinc-200 dark:border-zinc-800 rounded-2xl">
+        <div class="mb-8 p-6 border border-zinc-200 dark:border-zinc-800 rounded-2xl">
           <h4 class="text-xs font-black text-zinc-400 uppercase tracking-widest mb-2">Números oficiais da Célia</h4>
           <p class="text-xs text-zinc-500 mb-3">Configurado no .env do servidor (NUMEROS_RECEBIMENTO_CELIA) — não editável por aqui.</p>
           <% if (numerosRecebimentoCelia.length === 0) { %>
@@ -121,12 +115,12 @@
         <div class="space-y-3">
           <% grupo.membros.forEach(membro => { %>
             <div class="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-950 border border-zinc-100 dark:border-zinc-800 rounded-xl">
-              <span class="font-bold text-sm sm:text-base"><%= membro.ordem ? `${membro.ordem}. ` : '' %><%= membro.nome %></span>
+              <span class="font-bold"><%= membro.ordem ? `${membro.ordem}. ` : '' %><%= membro.nome %></span>
               <span class="text-lg tracking-wider">
                 <% if (membro.diasPagos > 0) { %>
                   <%= '✅'.repeat(membro.diasPagos) %>
                 <% } else { %>
-                  <span class="text-[10px] sm:text-xs font-black uppercase tracking-wider text-zinc-500">Sem pagamentos</span>
+                  <span class="text-xs font-black uppercase tracking-wider text-zinc-500">Sem pagamentos ainda</span>
                 <% } %>
               </span>
             </div>
