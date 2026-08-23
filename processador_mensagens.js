@@ -3,7 +3,6 @@ import makeWASocket, { useMultiFileAuthState, DisconnectReason, downloadMediaMes
 import { Boom } from '@hapi/boom';
 import { open } from 'sqlite';
 import sqlite3 from 'sqlite3';
-import qrcode from 'qrcode-terminal';
 import { createWorker } from 'tesseract.js';
 
 const NUMEROS_AUTORIZADOS = (process.env.NUMEROS_AUTORIZADOS || '')
@@ -25,7 +24,6 @@ const NUMEROS_RECEBIMENTO_CELIA = (process.env.NUMEROS_RECEBIMENTO_CELIA || '')
 if (NUMEROS_RECEBIMENTO_CELIA.length === 0) {
   console.warn('AVISO: NUMEROS_RECEBIMENTO_CELIA está vazio no .env — checagem de destino errado/editado está DESLIGADA.');
 }
-
 function normalizarNumero(numero) {
   if (!numero) return null;
   let digitos = numero.replace(/\D/g, '');
@@ -58,7 +56,7 @@ function extrairMPesaRecebido(texto) {
 }
 
 function extrairEMolaRecebido(texto) {
-  // Formato conta pessoal
+  // Formato do Mpesa Recebeste 
   let m = texto.match(
     /ID d[ae] tran[sç]?acao:?\s*([a-zA-Z0-9.]+)\.\s*Recebeste\s+(\d+(?:[.,]\d{1,2})?)\s*MT\s+de conta\s+(\d{6,12}),\s*nome:\s*([^.]+?)\s+as\s+/is
   );
@@ -66,7 +64,7 @@ function extrairEMolaRecebido(texto) {
     return { tipo: 'recebido', id_transacao: m[1], valor: parseFloat(m[2].replace(',', '.')), remetente_numero: m[3], remetente_nome: m[4].trim() };
   }
 
-  // Formato conta empresarial
+  // Formato do eMola Recebeu
   m = texto.match(
     /ID Trans:\s*([a-zA-Z0-9.]+)\.\s*Recebeu\s+(\d+(?:[.,]\d{1,2})?)\s*MT\s+de\s+(\d{6,12}),\s*([^.]+?)\s+as\s+/is
   );
@@ -85,13 +83,12 @@ function extrairMPesaEnviado(texto) {
 }
 
 function extrairEMolaEnviado(texto) {
-  // Variante 1
+
   let m = texto.match(
     /ID d[ae] tran[sç]?acao:?\s*([a-zA-Z0-9.]+)\..*?para o \w+\s+(\d{6,12}).*?montante:\s*(\d+(?:[.,]\d{1,2})?)\s*MT/is
   );
   if (m) return { tipo: 'enviado', id_transacao: m[1], destino: m[2], valor: parseFloat(m[3].replace(',', '.')) };
 
-  // Variante 2
   m = texto.match(
     /ID d[ae] tran[sç]?acao:?\s*([a-zA-Z0-9.]+)\.\s*Transferiste\s+(\d+(?:[.,]\d{1,2})?)\s*MT\s+para conta\s+(\d{6,12})/is
   );
@@ -127,7 +124,6 @@ function encontrarMembroPorNome(nomeNaSms, membros) {
   return { membro: null, ambiguo: candidatos.length > 1 };
 }
 
-
 function aplicarPagamento(membro, valorPago, valorDiario) {
   const novoTotalPago = (membro.total_pago || 0) + valorPago;
   const diasPagos = Math.floor(novoTotalPago / valorDiario);
@@ -136,7 +132,7 @@ function aplicarPagamento(membro, valorPago, valorDiario) {
 }
 
 // Monta a lista de todos os membros do grupo com o checklist de dias pagos,
-// no formato "Nome ✅✅✅"
+// no formato "Nome ✅✅✅" 
 async function gerarListaChecklist(db, idGrupo, valorDiario) {
   const membros = await db.all('SELECT nome, total_pago FROM membros WHERE id_grupo = ?', [idGrupo]);
   if (membros.length === 0) return '(nenhum membro registado ainda)';
@@ -184,7 +180,6 @@ async function tratarMensagem(sock, db, msg) {
   }
 
   const idConversa = msg.key.remoteJid;
-  const ehGrupo = idConversa?.endsWith('@g.us');
 
   let remetente = ehGrupo ? msg.key.participant : msg.key.remoteJid;
   if (remetente?.endsWith('@lid')) {
@@ -203,7 +198,7 @@ async function tratarMensagem(sock, db, msg) {
 
   const ehAdmin = NUMEROS_AUTORIZADOS.includes(normalizarNumero(remetente));
   console.log(`Mensagem de ${remetente} (normalizado: ${normalizarNumero(remetente)}) — ehAdmin: ${ehAdmin}${msg.key.participant?.endsWith('@lid') ? ' [participant original era LID: ' + msg.key.participant + ']' : ''}`);
-
+  
   if (texto.startsWith('!novo')) {
     if (!ehAdmin) {
       await sock.sendMessage(idConversa, { text: 'Só um administrador pode criar um novo xitique.' });
@@ -267,6 +262,7 @@ async function tratarMensagem(sock, db, msg) {
      ON CONFLICT(id_whatsapp, id_grupo) DO NOTHING`,
     [remetente, idConversa, nomeContato]
   );
+
   if (texto.startsWith('!banir')) {
     if (!ehAdmin) return;
     const numeroAlvo = texto.split(' ').filter(Boolean)[1];
@@ -386,19 +382,18 @@ async function tratarMensagem(sock, db, msg) {
     }
     if (pendentes.length > 0) {
       const linhas = pendentes.map(p => `${p.id_transacao} — ${p.valor}MT de "${p.remetente_nome}"`).join('\n');
-      resposta += `Precisam de atribuição manual (!atribuir IDTransacao 84XXXXXXX):\n${linhas}`;
+      resposta += `Precisam de atribuição manual (!atribuir IDTransacao 840000000):\n${linhas}`;
     }
     await sock.sendMessage(idConversa, { text: resposta.trim() });
     return;
   }
-
   if (texto.startsWith('!atribuir')) {
     if (!ehAdmin) return;
     const partes = texto.split(' ').filter(Boolean);
     const idTransacao = partes[1];
     const numeroAlvo = partes[2];
     if (!idTransacao || !numeroAlvo) {
-      await sock.sendMessage(idConversa, { text: 'Uso correto: !atribuir IDTransacao 84XXXXXXX' });
+      await sock.sendMessage(idConversa, { text: 'Uso correto: !atribuir IDTransacao 840000000' });
       return;
     }
     const pendente = await db.get('SELECT * FROM pagamentos_pendentes WHERE id_transacao = ? AND id_grupo = ?', [idTransacao, idConversa]);
@@ -463,7 +458,6 @@ async function tratarMensagem(sock, db, msg) {
     `INSERT INTO sms_recebidos (id_transacao, id_grupo, remetente, valor, mensagem_bruta) VALUES (?, ?, ?, ?, ?)`,
     [confirmacao.id_transacao, idConversa, remetente, confirmacao.valor, texto]
   );
-
   if (confirmacao.tipo === 'recebido' && !ehAdmin) {
     return;
   }
@@ -496,6 +490,7 @@ async function tratarMensagem(sock, db, msg) {
 
       await db.run('UPDATE sms_celia SET usado = 1 WHERE id_transacao = ?', [confirmacao.id_transacao]);
     } else if (NUMEROS_RECEBIMENTO_CELIA.length > 0) {
+      // Sem webhook configurado: cai de volta pra checagem de destino (mais fraca).
       const destinoNormalizado = normalizarNumero(confirmacao.destino);
       if (!NUMEROS_RECEBIMENTO_CELIA.includes(destinoNormalizado)) {
         await sock.sendMessage(idConversa, {
@@ -542,10 +537,16 @@ async function tratarMensagem(sock, db, msg) {
 }
 
 let sockAtual = null;
-let qrAtual = null;
 
-export function obterQrAtual() {
-  return qrAtual;
+export async function obterNovoCodigoPareamento() {
+  const numeroBot = (process.env.NUMERO_BOT || '').replace(/\D/g, '');
+  if (!sockAtual || !numeroBot) return null;
+  try {
+    return await sockAtual.requestPairingCode(numeroBot);
+  } catch (erro) {
+    console.error('Erro ao pedir código de pareamento:', erro);
+    return null;
+  }
 }
 
 export async function iniciarWhatsApp() {
@@ -561,17 +562,7 @@ export async function iniciarWhatsApp() {
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', (update) => {
-      const { connection, lastDisconnect, qr } = update;
-
-      if (qr) {
-        qrAtual = qr;
-        console.log('\nNovo QR code disponível. Abre /qr no painel web pra escanear (dá pra usar a câmara direto, sem pressa).\n');
-        qrcode.generate(qr, { small: true }); 
-      }
-
-      if (connection === 'open') {
-        qrAtual = null; 
-      }
+      const { connection, lastDisconnect } = update;
 
       if (connection === 'close') {
         const codigo = new Boom(lastDisconnect?.error)?.output?.statusCode;
@@ -612,6 +603,7 @@ export async function processarSmsExterna(texto) {
     `INSERT INTO sms_celia (id_transacao, valor, remetente_nome, remetente_numero) VALUES (?, ?, ?, ?)`,
     [confirmacao.id_transacao, confirmacao.valor, confirmacao.remetente_nome, confirmacao.remetente_numero]
   );
+
   const reivindicacao = await db.get('SELECT * FROM reivindicacoes_pendentes WHERE id_transacao = ?', [confirmacao.id_transacao]);
   if (!reivindicacao) {
     return { ok: true, status: 'guardado', motivo: 'nenhum cliente postou esta confirmação ainda' };
