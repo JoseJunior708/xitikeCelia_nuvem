@@ -1,9 +1,20 @@
 import 'dotenv/config';
-import makeWASocket, { useMultiFileAuthState, DisconnectReason, downloadMediaMessage, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
+import * as BaileysPkg from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import { open } from 'sqlite';
 import sqlite3 from 'sqlite3';
 import { createWorker } from 'tesseract.js';
+
+const baileysDefault = BaileysPkg.default ?? BaileysPkg;
+const makeWASocket = typeof baileysDefault === 'function' ? baileysDefault : baileysDefault.makeWASocket;
+const useMultiFileAuthState = BaileysPkg.useMultiFileAuthState ?? baileysDefault.useMultiFileAuthState;
+const DisconnectReason = BaileysPkg.DisconnectReason ?? baileysDefault.DisconnectReason;
+const downloadMediaMessage = BaileysPkg.downloadMediaMessage ?? baileysDefault.downloadMediaMessage;
+const fetchLatestBaileysVersion = BaileysPkg.fetchLatestBaileysVersion ?? baileysDefault.fetchLatestBaileysVersion;
+
+if (typeof makeWASocket !== 'function') {
+  throw new Error('Não consegui encontrar makeWASocket no pacote @whiskeysockets/baileys — a versão instalada pode ter mudado a forma de exportar. Verifica a versão com "npm ls @whiskeysockets/baileys".');
+}
 
 const NUMEROS_AUTORIZADOS = (process.env.NUMEROS_AUTORIZADOS || '')
   .split(',')
@@ -85,6 +96,7 @@ function extrairMPesaEnviado(texto) {
 }
 
 function extrairEMolaEnviado(texto) {
+
   let m = texto.match(
     /ID d[ae] tran[sç]?acao:?\s*([a-zA-Z0-9.]+)\..*?para o \w+\s+(\d{6,12}).*?montante:\s*(\d+(?:[.,]\d{1,2})?)\s*MT/is
   );
@@ -182,6 +194,7 @@ async function tratarMensagem(sock, db, msg) {
 
   const idConversa = msg.key.remoteJid;
   const ehGrupo = idConversa?.endsWith('@g.us');
+
   let remetente = ehGrupo ? msg.key.participant : msg.key.remoteJid;
   if (remetente?.endsWith('@lid')) {
     remetente = (ehGrupo ? msg.key.participantAlt : msg.key.remoteJidAlt) || remetente;
@@ -238,9 +251,9 @@ async function tratarMensagem(sock, db, msg) {
         '!cadastrar 840000000 Nome Completo — regista um membro que ainda não escreveu no grupo (admin)\n' +
         '!pagos (seguido de uma linha "numero Nome valor" por membro) — importa em massa quem já pagou (admin)\n' +
         '!atribuir IDTransacao 840000000 — atribui manualmente um pagamento pendente a um membro (admin)\n' +
-        '!banir 840000000 — remove um membro do grupo manualmente (admin)\n' +
+        '!banir 840000000— remove um membro do grupo manualmente (admin)\n' +
         '!bloqueados — lista quem foi sinalizado por reciclar comprovativo (admin)\n' +
-        '!desbloquear 840000000 — tira alguém da lista de sinalizados (admin)\n' +
+        '!desbloquear   840000000 — tira alguém da lista de sinalizados (admin)\n' +
         '!pendentes — lista pagamentos que a Célia ainda precisa atribuir\n' +
         '!resumo — mostra a situação de cada membro\n' +
         'Cliente: cola aqui a tua SMS de confirmação de pagamento (M-Pesa/e-Mola).\n' +
@@ -326,7 +339,6 @@ async function tratarMensagem(sock, db, msg) {
     return;
   }
 
- 
   if (texto.startsWith('!pagos')) {
     if (!ehAdmin) return;
     const linhas = texto.split('\n').slice(1).map(l => l.trim()).filter(Boolean);
@@ -384,19 +396,20 @@ async function tratarMensagem(sock, db, msg) {
     }
     if (pendentes.length > 0) {
       const linhas = pendentes.map(p => `${p.id_transacao} — ${p.valor}MT de "${p.remetente_nome}"`).join('\n');
-      resposta += `Precisam de atribuição manual (!atribuir IDTransacao 84XXXXXXX):\n${linhas}`;
+      resposta += `Precisam de atribuição manual (!atribuir IDTransacao 840000000):\n${linhas}`;
     }
     await sock.sendMessage(idConversa, { text: resposta.trim() });
     return;
   }
 
+  // --- !atribuir — admin liga manualmente um pagamento pendente a um membro ---
   if (texto.startsWith('!atribuir')) {
     if (!ehAdmin) return;
     const partes = texto.split(' ').filter(Boolean);
     const idTransacao = partes[1];
     const numeroAlvo = partes[2];
     if (!idTransacao || !numeroAlvo) {
-      await sock.sendMessage(idConversa, { text: 'Uso correto: !atribuir IDTransacao 84XXXXXXX' });
+      await sock.sendMessage(idConversa, { text: 'Uso correto: !atribuir IDTransacao 840000000' });
       return;
     }
     const pendente = await db.get('SELECT * FROM pagamentos_pendentes WHERE id_transacao = ? AND id_grupo = ?', [idTransacao, idConversa]);
@@ -427,7 +440,6 @@ async function tratarMensagem(sock, db, msg) {
     return;
   }
 
- 
   const confirmacao = extrairDadosConfirmacao(texto);
   if (!confirmacao) {
     if (/\bMT\b|confirmad[oa]|transferist[e]s?|recebest[e]s?/i.test(texto)) {
@@ -495,7 +507,6 @@ async function tratarMensagem(sock, db, msg) {
 
       await db.run('UPDATE sms_celia SET usado = 1 WHERE id_transacao = ?', [confirmacao.id_transacao]);
     } else if (NUMEROS_RECEBIMENTO_CELIA.length > 0) {
-      // Sem webhook configurado: cai de volta pra checagem de destino (mais fraca).
       const destinoNormalizado = normalizarNumero(confirmacao.destino);
       if (!NUMEROS_RECEBIMENTO_CELIA.includes(destinoNormalizado)) {
         await sock.sendMessage(idConversa, {
@@ -543,17 +554,6 @@ async function tratarMensagem(sock, db, msg) {
 
 let sockAtual = null;
 
-export async function obterNovoCodigoPareamento() {
-  const numeroBot = (process.env.NUMERO_BOT || '').replace(/\D/g, '');
-  if (!sockAtual || !numeroBot) return null;
-  try {
-    return await sockAtual.requestPairingCode(numeroBot);
-  } catch (erro) {
-    console.error('Erro ao pedir código de pareamento:', erro);
-    return null;
-  }
-}
-
 export async function iniciarWhatsApp() {
   const db = await getDb();
 
@@ -563,6 +563,21 @@ export async function iniciarWhatsApp() {
     console.log('Usando versão do protocolo WhatsApp:', version.join('.'));
     const sock = makeWASocket({ auth: state, version, printQRInTerminal: false });
     sockAtual = sock;
+
+    const numeroBot = (process.env.NUMERO_BOT || '').replace(/\D/g, '');
+    if (!state.creds.registered && numeroBot) {
+      setTimeout(async () => {
+        try {
+          const codigoPareamento = await sock.requestPairingCode(numeroBot);
+          console.log('CÓDIGO DE PAREAMENTO:', codigoPareamento);
+          console.log('No WhatsApp do número', numeroBot, ':');
+          console.log('Aparelhos ligados > Ligar aparelho > Ligar com número de telefone');
+          console.log('Digita já — expira rápido (cerca de 1 minuto).');
+        } catch (erro) {
+          console.error('Erro ao pedir código de pareamento:', erro);
+        }
+      }, 3000);
+    }
 
     sock.ev.on('creds.update', saveCreds);
 
@@ -608,6 +623,7 @@ export async function processarSmsExterna(texto) {
     `INSERT INTO sms_celia (id_transacao, valor, remetente_nome, remetente_numero) VALUES (?, ?, ?, ?)`,
     [confirmacao.id_transacao, confirmacao.valor, confirmacao.remetente_nome, confirmacao.remetente_numero]
   );
+
   const reivindicacao = await db.get('SELECT * FROM reivindicacoes_pendentes WHERE id_transacao = ?', [confirmacao.id_transacao]);
   if (!reivindicacao) {
     return { ok: true, status: 'guardado', motivo: 'nenhum cliente postou esta confirmação ainda' };
