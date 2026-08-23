@@ -7,7 +7,7 @@ import sqlite3 from 'sqlite3';
 import os from 'os';
 import fs from 'fs';
 import multer from 'multer';
-import { iniciarWhatsApp, processarSmsExterna, obterNovoCodigoPareamento } from './processador_mensagens.js';
+import { iniciarWhatsApp, processarSmsExterna } from './processador_mensagens.js';
 import { criarTabelas } from './init_db.js';
 
 fs.mkdirSync('public/tmp', { recursive: true });
@@ -29,10 +29,7 @@ if (!SESSION_SECRET || !ADMIN_PASSWORD) {
 
 const app = express();
 app.set('trust proxy', 1); 
-
 app.use(helmet({ contentSecurityPolicy: false }));
-
-
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
   secret: SESSION_SECRET,
@@ -51,7 +48,7 @@ app.use(express.static('public'));
 const db = await open({ filename: './xitike.db', driver: sqlite3.Database });
 await criarTabelas(db);
 
-//limite pra tentativas de login
+// limite pra tentativas de login 
 const tentativasLogin = new Map();
 const LIMITE_TENTATIVAS = 5;
 const JANELA_MS = 15 * 60 * 1000; // 15 min
@@ -66,6 +63,7 @@ app.get('/', (req, res) => res.redirect('/login'));
 app.get('/login', (req, res) => res.render('login', { erro: null }));
 
 app.post('/login', async (req, res) => {
+
   if (req.body.website) {
     return res.render('login', { erro: 'Palavra-passe incorreta. Tenta novamente.' });
   }
@@ -98,12 +96,6 @@ app.post('/login', async (req, res) => {
 
 app.post('/logout', (req, res) => {
   req.session.destroy(() => res.redirect('/login'));
-});
-
-// --- Painel de administração ---
-app.get('/qr', verificarLogin, async (req, res) => {
-  const codigo = await obterNovoCodigoPareamento();
-  res.render('qr', { codigo });
 });
 
 app.get('/admin', verificarLogin, async (req, res) => {
@@ -187,7 +179,7 @@ function obterIpLocal() {
       }
     }
   }
-  // Prefere adaptadores de WiFi/Ethernet reais; ignora os virtuais (VirtualBox, VMware, Hyper-V etc).
+
   const virtual = /virtualbox|vmware|hyper-v|vethernet|loopback|docker/i;
   const preferido = candidatos.find(c => !virtual.test(c.nome));
   return (preferido || candidatos[0])?.endereco || null;
@@ -209,7 +201,6 @@ app.post('/admin/logo', verificarLogin, upload.single('logo'), (req, res) => {
       fs.unlinkSync(req.file.path);
       return res.status(400).send('Tipo de ficheiro não suportado.');
     }
-    // Remove logo antiga (pode ter extensão diferente da nova)
     for (const ext of Object.values(EXTENSAO_POR_MIMETYPE)) {
       try { fs.unlinkSync('public/logo' + ext); } catch { /* não existia, tudo bem */ }
     }
