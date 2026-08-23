@@ -24,6 +24,7 @@ const NUMEROS_RECEBIMENTO_CELIA = (process.env.NUMEROS_RECEBIMENTO_CELIA || '')
 if (NUMEROS_RECEBIMENTO_CELIA.length === 0) {
   console.warn('AVISO: NUMEROS_RECEBIMENTO_CELIA está vazio no .env — checagem de destino errado/editado está DESLIGADA.');
 }
+
 function normalizarNumero(numero) {
   if (!numero) return null;
   let digitos = numero.replace(/\D/g, '');
@@ -56,7 +57,7 @@ function extrairMPesaRecebido(texto) {
 }
 
 function extrairEMolaRecebido(texto) {
-  // Formato do Mpesa Recebeste 
+  // Formato do Mpesa Recebeste...
   let m = texto.match(
     /ID d[ae] tran[sç]?acao:?\s*([a-zA-Z0-9.]+)\.\s*Recebeste\s+(\d+(?:[.,]\d{1,2})?)\s*MT\s+de conta\s+(\d{6,12}),\s*nome:\s*([^.]+?)\s+as\s+/is
   );
@@ -64,7 +65,7 @@ function extrairEMolaRecebido(texto) {
     return { tipo: 'recebido', id_transacao: m[1], valor: parseFloat(m[2].replace(',', '.')), remetente_numero: m[3], remetente_nome: m[4].trim() };
   }
 
-  // Formato do eMola Recebeu
+  // Formato do eMola Recebeu...
   m = texto.match(
     /ID Trans:\s*([a-zA-Z0-9.]+)\.\s*Recebeu\s+(\d+(?:[.,]\d{1,2})?)\s*MT\s+de\s+(\d{6,12}),\s*([^.]+?)\s+as\s+/is
   );
@@ -74,6 +75,7 @@ function extrairEMolaRecebido(texto) {
 
   return null;
 }
+
 function extrairMPesaEnviado(texto) {
   const m = texto.match(
     /Confirmado\s+([A-Z0-9]{8,15})\.\s*Transferiste\s+(\d+(?:[.,]\d{1,2})?)\s*MT.*?para\s+(\d{6,12})/is
@@ -83,7 +85,6 @@ function extrairMPesaEnviado(texto) {
 }
 
 function extrairEMolaEnviado(texto) {
-
   let m = texto.match(
     /ID d[ae] tran[sç]?acao:?\s*([a-zA-Z0-9.]+)\..*?para o \w+\s+(\d{6,12}).*?montante:\s*(\d+(?:[.,]\d{1,2})?)\s*MT/is
   );
@@ -180,7 +181,7 @@ async function tratarMensagem(sock, db, msg) {
   }
 
   const idConversa = msg.key.remoteJid;
-
+  const ehGrupo = idConversa?.endsWith('@g.us');
   let remetente = ehGrupo ? msg.key.participant : msg.key.remoteJid;
   if (remetente?.endsWith('@lid')) {
     remetente = (ehGrupo ? msg.key.participantAlt : msg.key.remoteJidAlt) || remetente;
@@ -198,7 +199,7 @@ async function tratarMensagem(sock, db, msg) {
 
   const ehAdmin = NUMEROS_AUTORIZADOS.includes(normalizarNumero(remetente));
   console.log(`Mensagem de ${remetente} (normalizado: ${normalizarNumero(remetente)}) — ehAdmin: ${ehAdmin}${msg.key.participant?.endsWith('@lid') ? ' [participant original era LID: ' + msg.key.participant + ']' : ''}`);
-  
+
   if (texto.startsWith('!novo')) {
     if (!ehAdmin) {
       await sock.sendMessage(idConversa, { text: 'Só um administrador pode criar um novo xitique.' });
@@ -325,6 +326,7 @@ async function tratarMensagem(sock, db, msg) {
     return;
   }
 
+ 
   if (texto.startsWith('!pagos')) {
     if (!ehAdmin) return;
     const linhas = texto.split('\n').slice(1).map(l => l.trim()).filter(Boolean);
@@ -382,18 +384,19 @@ async function tratarMensagem(sock, db, msg) {
     }
     if (pendentes.length > 0) {
       const linhas = pendentes.map(p => `${p.id_transacao} — ${p.valor}MT de "${p.remetente_nome}"`).join('\n');
-      resposta += `Precisam de atribuição manual (!atribuir IDTransacao 840000000):\n${linhas}`;
+      resposta += `Precisam de atribuição manual (!atribuir IDTransacao 84XXXXXXX):\n${linhas}`;
     }
     await sock.sendMessage(idConversa, { text: resposta.trim() });
     return;
   }
+
   if (texto.startsWith('!atribuir')) {
     if (!ehAdmin) return;
     const partes = texto.split(' ').filter(Boolean);
     const idTransacao = partes[1];
     const numeroAlvo = partes[2];
     if (!idTransacao || !numeroAlvo) {
-      await sock.sendMessage(idConversa, { text: 'Uso correto: !atribuir IDTransacao 840000000' });
+      await sock.sendMessage(idConversa, { text: 'Uso correto: !atribuir IDTransacao 84XXXXXXX' });
       return;
     }
     const pendente = await db.get('SELECT * FROM pagamentos_pendentes WHERE id_transacao = ? AND id_grupo = ?', [idTransacao, idConversa]);
@@ -424,6 +427,7 @@ async function tratarMensagem(sock, db, msg) {
     return;
   }
 
+ 
   const confirmacao = extrairDadosConfirmacao(texto);
   if (!confirmacao) {
     if (/\bMT\b|confirmad[oa]|transferist[e]s?|recebest[e]s?/i.test(texto)) {
@@ -458,6 +462,7 @@ async function tratarMensagem(sock, db, msg) {
     `INSERT INTO sms_recebidos (id_transacao, id_grupo, remetente, valor, mensagem_bruta) VALUES (?, ?, ?, ?, ?)`,
     [confirmacao.id_transacao, idConversa, remetente, confirmacao.valor, texto]
   );
+
   if (confirmacao.tipo === 'recebido' && !ehAdmin) {
     return;
   }
@@ -603,7 +608,6 @@ export async function processarSmsExterna(texto) {
     `INSERT INTO sms_celia (id_transacao, valor, remetente_nome, remetente_numero) VALUES (?, ?, ?, ?)`,
     [confirmacao.id_transacao, confirmacao.valor, confirmacao.remetente_nome, confirmacao.remetente_numero]
   );
-
   const reivindicacao = await db.get('SELECT * FROM reivindicacoes_pendentes WHERE id_transacao = ?', [confirmacao.id_transacao]);
   if (!reivindicacao) {
     return { ok: true, status: 'guardado', motivo: 'nenhum cliente postou esta confirmação ainda' };
