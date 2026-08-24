@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="pt" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config = { darkMode: 'media' }</script>
+  <title>Xitike Célia — Ligar WhatsApp</title>
+</head>
+<body class="bg-zinc-100 dark:bg-black min-h-screen flex items-center justify-center p-6">
+
+  <div class="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-6 rounded-3xl shadow-2xl text-center">
+    <h1 class="text-xl font-black mb-1">Ligar o WhatsApp</h1>
+    <p class="text-zinc-500 text-sm mb-6">WhatsApp &gt; Aparelhos ligados &gt; Ligar aparelho &gt; Ligar com número de telefone</p>
+
+    <% if (codigo) { %>
+      <div class="p-6 rounded-2xl bg-pink-600 text-white">
+        <p class="text-4xl font-black tracking-widest"><%= codigo %></p>
+      </div>
+      <p class="text-xs text-amber-500 font-bold mt-4">Digita já — expira em cerca de 1 minuto. Se demorares, atualiza esta página pra pedir um código novo.</p>
+    <% } else { %>
+      <div class="p-10 rounded-2xl bg-zinc-100 dark:bg-zinc-800">
+        <p class="font-bold">Não consegui gerar um código agora.</p>
+        <p class="text-sm text-zinc-500 mt-1">Confirma que o <code>NUMERO_BOT</code> está configurado no servidor, ou já está ligado.</p>
+      </div>
+    <% } %>
+
+    <button onclick="location.reload()" class="w-full mt-4 py-3 bg-zinc-800 hover:bg-zinc-700 text-white font-bold rounded-xl text-sm">Pedir código novo</button>
+    <a href="/admin" class="block mt-4 text-xs font-bold uppercase tracking-wider text-zinc-500 hover:text-pink-500">← Voltar ao painel</a>
+  </div>
+</body>
+</html>
