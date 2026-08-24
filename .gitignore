@@ -3,3 +3,4 @@ node_modules/
 *.db
 public/logo.*
 public/tmp/
+auth_info/

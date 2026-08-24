@@ -490,8 +490,6 @@ async function tratarMensagem(sock, db, msg) {
     [confirmacao.id_transacao, idConversa, remetente, confirmacao.valor, texto]
   );
 
-  // "Recebeste" postado por um membro comum não se aplica a este tipo de
-  // xitique (sem pote/rotação) — ignora, não é uma confirmação de pagamento.
   if (confirmacao.tipo === 'recebido' && !ehAdmin) {
     return;
   }
@@ -603,19 +601,19 @@ export async function iniciarWhatsApp() {
 
       if (connection === 'close') {
         const codigo = new Boom(lastDisconnect?.error)?.output?.statusCode;
-        const deveReconectar = codigo !== DisconnectReason.loggedOut;
-        console.log('Conexão do WhatsApp fechada. Reconectar:', deveReconectar);
+        console.log('Conexão do WhatsApp fechada. Código:', codigo);
 
-        if (deveReconectar && !state.creds.registered) {
-
+        if (codigo === DisconnectReason.loggedOut) {
           fs.rm('auth_info', { recursive: true, force: true }, (erro) => {
             if (erro) console.error('Não consegui limpar auth_info:', erro);
+            console.log('Sessão expirada. Reconectando para gerar novo código...');
             conectar();
           });
           return;
         }
 
-        if (deveReconectar) conectar();
+        console.log('Reconectando...');
+        conectar();
       } else if (connection === 'open') {
         console.log('Xitike conectado ao WhatsApp.');
       }
