@@ -6,6 +6,9 @@ import { open } from 'sqlite';
 import sqlite3 from 'sqlite3';
 import { createWorker } from 'tesseract.js';
 
+// Import defensivo: dependendo da versão do Node e de como o pacote resolve
+// os exports (CJS vs ESM), makeWASocket pode vir como export default direto,
+// dentro de default, ou como export nomeado. Isto cobre os três casos.
 const baileysDefault = BaileysPkg.default ?? BaileysPkg;
 const makeWASocket = typeof baileysDefault === 'function' ? baileysDefault : baileysDefault.makeWASocket;
 const useMultiFileAuthState = BaileysPkg.useMultiFileAuthState ?? baileysDefault.useMultiFileAuthState;
@@ -17,6 +20,9 @@ if (typeof makeWASocket !== 'function') {
   throw new Error('Não consegui encontrar makeWASocket no pacote @whiskeysockets/baileys — a versão instalada pode ter mudado a forma de exportar. Verifica a versão com "npm ls @whiskeysockets/baileys".');
 }
 
+// Números autorizados a confirmar pagamento (a Célia). Configurado no .env,
+// separados por vírgula, sem prefixo 258 nem espaços — ex: 865222317,866690083
+// Não precisa mexer em código nem no telemóvel dela pra adicionar/trocar um número.
 const NUMEROS_AUTORIZADOS = (process.env.NUMEROS_AUTORIZADOS || '')
   .split(',')
   .map(n => normalizarNumero(n))
@@ -54,6 +60,17 @@ function getDb() {
   return dbPromise;
 }
 
+/**
+ * Parsers de mensagens "Recebeste" — chega no telemóvel de quem RECEBE o
+ * dinheiro. Pode ser a Célia (contribuição de um cliente) ou um membro
+ * (formato calibrado com exemplos reais, contas pessoais e empresariais).
+ *
+ * Calibrado com exemplos reais fornecidos em 20/07/2026:
+ *   M-Pesa: "Confirmado DB99JOEEG51. Recebeste 800.00MT de 258846555876-
+ *            MARTIN AGOSTINHO BANZE aos 9/2/26 as 8:54 AM. ..."
+ *   e-Mola: "ID de tranacao PP250926.1004112801.Recebeste 860.00MT de conta
+ *            873722988, nome: Bruno Marcelino Rodrigues Mendes as ... ..."
+ */
 function extrairMPesaRecebido(texto) {
   const m = texto.match(
     /Confirmado\s+([A-Z0-9]{8,15})\.\s*Recebeste\s+(\d+(?:[.,]\d{1,2})?)\s*MT\s+de\s+(\d{6,12})-?\s*([^.]+?)\s+aos/is
@@ -69,6 +86,7 @@ function extrairMPesaRecebido(texto) {
 }
 
 function extrairEMolaRecebido(texto) {
+  // Formato conta pessoal: "ID de tranacao X. Recebeste Y MT de conta Z, nome: W as ..."
   let m = texto.match(
     /ID d[ae] tran[sç]?acao:?\s*([a-zA-Z0-9.]+)\.\s*Recebeste\s+(\d+(?:[.,]\d{1,2})?)\s*MT\s+de conta\s+(\d{6,12}),\s*nome:\s*([^.]+?)\s+as\s+/is
   );
@@ -76,6 +94,7 @@ function extrairEMolaRecebido(texto) {
     return { tipo: 'recebido', id_transacao: m[1], valor: parseFloat(m[2].replace(',', '.')), remetente_numero: m[3], remetente_nome: m[4].trim() };
   }
 
+  // Formato conta empresarial: "ID Trans: X. Recebeu Y MT de Z, Nome as ..."
   m = texto.match(
     /ID Trans:\s*([a-zA-Z0-9.]+)\.\s*Recebeu\s+(\d+(?:[.,]\d{1,2})?)\s*MT\s+de\s+(\d{6,12}),\s*([^.]+?)\s+as\s+/is
   );
@@ -245,7 +264,7 @@ async function tratarMensagem(sock, db, msg) {
       text:
         'Comandos do Xitike:\n' +
         '!novo Nome Valor DiasCiclo — cria um xitique (admin)\n' +
-        '!cadastrar 840001000 Nome Completo — regista um membro que ainda não escreveu no grupo (admin)\n' +
+        '!cadastrar 84XXXXXXX Nome Completo — regista um membro que ainda não escreveu no grupo (admin)\n' +
         '!pagos (seguido de uma linha "numero Nome valor" por membro) — importa em massa quem já pagou (admin)\n' +
         '!atribuir IDTransacao 840001000 — atribui manualmente um pagamento pendente a um membro (admin)\n' +
         '!banir 840001000 — remove um membro do grupo manualmente (admin)\n' +
@@ -471,6 +490,8 @@ async function tratarMensagem(sock, db, msg) {
     [confirmacao.id_transacao, idConversa, remetente, confirmacao.valor, texto]
   );
 
+  // "Recebeste" postado por um membro comum não se aplica a este tipo de
+  // xitique (sem pote/rotação) — ignora, não é uma confirmação de pagamento.
   if (confirmacao.tipo === 'recebido' && !ehAdmin) {
     return;
   }
@@ -568,6 +589,7 @@ export async function iniciarWhatsApp() {
           console.log('No WhatsApp do número', numeroBot, ':');
           console.log('Aparelhos ligados > Ligar aparelho > Ligar com número de telefone');
           console.log('Digita já — expira rápido (cerca de 1 minuto).');
+          console.log('================================\n');
         } catch (erro) {
           console.error('Erro ao pedir código de pareamento:', erro);
         }

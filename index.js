@@ -50,6 +50,7 @@ app.use(express.static('public'));
 const db = await open({ filename: './xitike.db', driver: sqlite3.Database });
 await criarTabelas(db);
 
+// limite pra tentativas de login 
 const tentativasLogin = new Map();
 const LIMITE_TENTATIVAS = 5;
 const JANELA_MS = 15 * 60 * 1000; // 15 min
