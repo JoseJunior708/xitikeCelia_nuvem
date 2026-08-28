@@ -7,17 +7,18 @@
   <script>tailwind.config = { darkMode: 'media' }</script>
   <title>Xitike Célia — Pagamentos</title>
 </head>
-<body class="bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 min-h-screen transition-colors duration-500">
+<body class="bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 min-h-screen transition-colors duration-500 overflow-x-hidden">
 
   <main class="max-w-5xl mx-auto p-6 md:py-12">
     <header class="mb-10 flex items-center justify-between flex-wrap gap-4">
       <div>
         <h1 class="text-3xl font-black">Pagamentos</h1>
-        <p class="text-zinc-500">Histórico e pendências, sem depender de nenhuma API do M-Pesa/e-Mola.</p>
+        <p class="text-zinc-500">Histórico e pendências</p>
       </div>
-      <a href="/admin" class="text-xs font-bold uppercase tracking-wider text-zinc-500 hover:text-pink-500 transition-colors">← Voltar ao painel</a>
+      <a href="/admin/bloqueados" class="text-xs font-bold uppercase tracking-wider text-zinc-500 hover:text-pink-500 transition-colors">Ver bloqueados →</a>
     </header>
 
+    <div id="pendentes"></div>
     <% if (aguardandoSms.length > 0) { %>
       <div class="mb-8 p-6 border-2 border-amber-500 rounded-3xl bg-white dark:bg-zinc-900">
         <h2 class="text-sm font-black uppercase tracking-widest text-amber-500 mb-4">Aguardando a SMS real chegar (<%= aguardandoSms.length %>)</h2>
@@ -48,12 +49,20 @@
 
     <% if (aguardandoAtribuicao.length > 0) { %>
       <div class="mb-8 p-6 border-2 border-red-500 rounded-3xl bg-white dark:bg-zinc-900">
-        <h2 class="text-sm font-black uppercase tracking-widest text-red-500 mb-4">Precisam de atribuição manual — !atribuir (<%= aguardandoAtribuicao.length %>)</h2>
+        <h2 class="text-sm font-black uppercase tracking-widest text-red-500 mb-4">Precisam de atribuição manual (<%= aguardandoAtribuicao.length %>)</h2>
         <div class="space-y-2">
           <% aguardandoAtribuicao.forEach(p => { %>
-            <div class="flex items-center justify-between p-3 bg-zinc-50 dark:bg-zinc-950 rounded-xl text-sm">
-              <span><b><%= p.remetente_nome %></b> — <%= p.nome_grupo %></span>
-              <span class="font-bold"><%= p.valor %> MT</span>
+            <div class="p-3 bg-zinc-50 dark:bg-zinc-950 rounded-xl text-sm">
+              <div class="flex items-center justify-between mb-2">
+                <span><b><%= p.remetente_nome %></b> — <%= p.nome_grupo %></span>
+                <span class="font-bold"><%= p.valor %> MT</span>
+              </div>
+              <form method="POST" action="/admin/pagamentos/atribuir" class="flex gap-2">
+                <input type="hidden" name="id_transacao" value="<%= p.id_transacao %>">
+                <input type="text" name="numero" placeholder="84XXXXXXX" required
+                       class="flex-1 p-2 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 text-sm">
+                <button type="submit" class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded-lg text-xs uppercase tracking-wider">Atribuir</button>
+              </form>
             </div>
           <% }) %>
         </div>
