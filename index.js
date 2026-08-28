@@ -7,25 +7,18 @@ import sqlite3 from 'sqlite3';
 import os from 'os';
 import fs from 'fs';
 import multer from 'multer';
-import { iniciarWhatsApp, processarSmsExterna } from './processador_mensagens.js';
+import { iniciarWhatsApp, processarSmsExterna, atribuirPagamentoPendente, desbloquearMembro } from './processador_mensagens.js';
 import { criarTabelas } from './init_db.js';
 
 fs.mkdirSync('public/tmp', { recursive: true });
 const upload = multer({
   dest: 'public/tmp/',
-  limits: { fileSize: 3 * 1024 * 1024 }, // 3MB
+  limits: { fileSize: 3 * 1024 * 1024 }, 
   fileFilter: (req, file, cb) => cb(null, /^image\/(png|jpe?g|webp)$/.test(file.mimetype))
 });
 
 const SESSION_SECRET = process.env.SESSION_SECRET;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-
-if (!SESSION_SECRET || !ADMIN_PASSWORD) {
-  console.error(
-    'Faltam variáveis de ambiente. Cria um ficheiro .env com SESSION_SECRET e ADMIN_PASSWORD.'
-  );
-  process.exit(1);
-}
 
 const app = express();
 app.set('trust proxy', 1);
@@ -41,7 +34,7 @@ app.use(session({
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 1000 * 60 * 60 * 8 // 8 horas
+    maxAge: 1000 * 60 * 60 * 8 
   }
 }));
 app.set('view engine', 'ejs');
@@ -53,7 +46,7 @@ await criarTabelas(db);
 // limite pra tentativas de login 
 const tentativasLogin = new Map();
 const LIMITE_TENTATIVAS = 5;
-const JANELA_MS = 15 * 60 * 1000; // 15 min
+const JANELA_MS = 15 * 60 * 1000; 
 
 function verificarLogin(req, res, next) {
   if (req.session.autenticado) return next();
@@ -116,7 +109,12 @@ app.get('/admin', verificarLogin, async (req, res) => {
     const painelGrupos = grupos.map(grupo => {
       const membrosDoGrupo = membros
         .filter(m => m.id_grupo === grupo.id_grupo)
-        .map(m => ({ ...m, diasPagos: Math.floor((m.total_pago || 0) / grupo.valor_diario) }))
+        .map(m => {
+          const total = m.total_pago || 0;
+          const diasPagos = Math.floor(total / grupo.valor_diario);
+          const credito = Math.round((total - diasPagos * grupo.valor_diario) * 100) / 100;
+          return { ...m, diasPagos, credito };
+        })
         .sort((a, b) => (a.ordem ?? 999) - (b.ordem ?? 999));
 
       const totalFaturado = membrosDoGrupo.reduce((acc, m) => acc + (m.total_pago || 0), 0);
@@ -178,6 +176,22 @@ app.get('/admin/bloqueados', verificarLogin, async (req, res) => {
   }
 });
 
+app.post('/admin/bloqueados/desbloquear', verificarLogin, async (req, res) => {
+  const { id_whatsapp, id_grupo } = req.body;
+  if (id_whatsapp && id_grupo) {
+    await desbloquearMembro(id_whatsapp, id_grupo);
+  }
+  res.redirect('/admin/bloqueados');
+});
+
+app.post('/admin/pagamentos/atribuir', verificarLogin, async (req, res) => {
+  const { id_transacao, numero } = req.body;
+  if (id_transacao && numero) {
+    await atribuirPagamentoPendente(id_transacao, numero);
+  }
+  res.redirect('/admin/pagamentos');
+});
+
 function obterIpLocal() {
   const redes = os.networkInterfaces();
   const candidatos = [];
@@ -210,7 +224,9 @@ app.post('/admin/logo', verificarLogin, upload.single('logo'), (req, res) => {
       return res.status(400).send('Tipo de ficheiro não suportado.');
     }
     for (const ext of Object.values(EXTENSAO_POR_MIMETYPE)) {
-      try { fs.unlinkSync('public/logo' + ext); } catch { /* não existia, tudo bem */ }
+      try { fs.unlinkSync('public/logo' + ext); } catch { 
+
+      }
     }
     fs.renameSync(req.file.path, 'public/logo' + extensao);
   }
@@ -219,28 +235,24 @@ app.post('/admin/logo', verificarLogin, upload.single('logo'), (req, res) => {
 
 app.post('/admin/logo/remover', verificarLogin, (req, res) => {
   for (const ext of Object.values(EXTENSAO_POR_MIMETYPE)) {
-    try { fs.unlinkSync('public/logo' + ext); } catch { /* não existia, tudo bem */ }
+    try { fs.unlinkSync('public/logo' + ext); } catch { 
+
+     }
   }
   res.redirect('/admin');
 });
 
 app.post('/api/gateway/sms', express.json(), async (req, res) => {
-  console.log('--- Webhook /api/gateway/sms recebeu uma chamada ---');
+  console.log('Webhook /api/gateway/sms recebeu uma chamada');
   const tokenEsperado = process.env.WEBHOOK_TOKEN;
   const autorizacao = req.headers.authorization || '';
 
-  if (!tokenEsperado) {
-    console.warn('AVISO: WEBHOOK_TOKEN não configurado no .env — o endpoint /api/gateway/sms está DESLIGADO.');
-    return res.status(503).json({ erro: 'webhook não configurado' });
-  }
-  if (autorizacao !== `xitike ${tokenEsperado}`) {
-    console.warn('Token recebido não bate com o esperado. Recebido:', autorizacao);
+  if (autorizacao.trim().toLowerCase() !== `xitike ${tokenEsperado}`.toLowerCase()) {
     return res.status(401).json({ erro: 'token inválido' });
   }
 
   const texto = (req.body?.texto_sms || '').trim();
   if (!texto) {
-    console.warn('texto_sms veio vazio. Corpo recebido:', req.body);
     return res.status(400).json({ erro: 'texto_sms em falta' });
   }
   console.log('texto_sms recebido:', texto);
