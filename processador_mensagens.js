@@ -6,9 +6,6 @@ import { open } from 'sqlite';
 import sqlite3 from 'sqlite3';
 import { createWorker } from 'tesseract.js';
 
-// Import defensivo: dependendo da versão do Node e de como o pacote resolve
-// os exports (CJS vs ESM), makeWASocket pode vir como export default direto,
-// dentro de default, ou como export nomeado. Isto cobre os três casos.
 const baileysDefault = BaileysPkg.default ?? BaileysPkg;
 const makeWASocket = typeof baileysDefault === 'function' ? baileysDefault : baileysDefault.makeWASocket;
 const useMultiFileAuthState = BaileysPkg.useMultiFileAuthState ?? baileysDefault.useMultiFileAuthState;
@@ -20,28 +17,17 @@ if (typeof makeWASocket !== 'function') {
   throw new Error('Não consegui encontrar makeWASocket no pacote @whiskeysockets/baileys — a versão instalada pode ter mudado a forma de exportar. Verifica a versão com "npm ls @whiskeysockets/baileys".');
 }
 
-// Números autorizados a confirmar pagamento (a Célia). Configurado no .env,
-// separados por vírgula, sem prefixo 258 nem espaços — ex: 865222317,866690083
-// Não precisa mexer em código nem no telemóvel dela pra adicionar/trocar um número.
 const NUMEROS_AUTORIZADOS = (process.env.NUMEROS_AUTORIZADOS || '')
   .split(',')
   .map(n => normalizarNumero(n))
   .filter(Boolean);
 
-if (NUMEROS_AUTORIZADOS.length === 0) {
-  console.warn('AVISO: NUMEROS_AUTORIZADOS está vazio no .env — ninguém vai conseguir confirmar pagamentos ou criar xitiques.');
-} else {
-  console.log('Números autorizados (admin):', NUMEROS_AUTORIZADOS);
-}
+console.log('Números autorizados (admin):', NUMEROS_AUTORIZADOS);
 
 const NUMEROS_RECEBIMENTO_CELIA = (process.env.NUMEROS_RECEBIMENTO_CELIA || '')
   .split(',')
   .map(n => n.replace(/\D/g, ''))
   .filter(Boolean);
-
-if (NUMEROS_RECEBIMENTO_CELIA.length === 0) {
-  console.warn('AVISO: NUMEROS_RECEBIMENTO_CELIA está vazio no .env — checagem de destino errado/editado está DESLIGADA.');
-}
 
 function normalizarNumero(numero) {
   if (!numero) return null;
@@ -60,17 +46,6 @@ function getDb() {
   return dbPromise;
 }
 
-/**
- * Parsers de mensagens "Recebeste" — chega no telemóvel de quem RECEBE o
- * dinheiro. Pode ser a Célia (contribuição de um cliente) ou um membro
- * (formato calibrado com exemplos reais, contas pessoais e empresariais).
- *
- * Calibrado com exemplos reais fornecidos em 20/07/2026:
- *   M-Pesa: "Confirmado DB99JOEEG51. Recebeste 800.00MT de 258846555876-
- *            MARTIN AGOSTINHO BANZE aos 9/2/26 as 8:54 AM. ..."
- *   e-Mola: "ID de tranacao PP250926.1004112801.Recebeste 860.00MT de conta
- *            873722988, nome: Bruno Marcelino Rodrigues Mendes as ... ..."
- */
 function extrairMPesaRecebido(texto) {
   const m = texto.match(
     /Confirmado\s+([A-Z0-9]{8,15})\.\s*Recebeste\s+(\d+(?:[.,]\d{1,2})?)\s*MT\s+de\s+(\d{6,12})-?\s*([^.]+?)\s+aos/is
@@ -86,7 +61,7 @@ function extrairMPesaRecebido(texto) {
 }
 
 function extrairEMolaRecebido(texto) {
-  // Formato conta pessoal: "ID de tranacao X. Recebeste Y MT de conta Z, nome: W as ..."
+
   let m = texto.match(
     /ID d[ae] tran[sç]?acao:?\s*([a-zA-Z0-9.]+)\.\s*Recebeste\s+(\d+(?:[.,]\d{1,2})?)\s*MT\s+de conta\s+(\d{6,12}),\s*nome:\s*([^.]+?)\s+as\s+/is
   );
@@ -94,7 +69,6 @@ function extrairEMolaRecebido(texto) {
     return { tipo: 'recebido', id_transacao: m[1], valor: parseFloat(m[2].replace(',', '.')), remetente_numero: m[3], remetente_nome: m[4].trim() };
   }
 
-  // Formato conta empresarial: "ID Trans: X. Recebeu Y MT de Z, Nome as ..."
   m = texto.match(
     /ID Trans:\s*([a-zA-Z0-9.]+)\.\s*Recebeu\s+(\d+(?:[.,]\d{1,2})?)\s*MT\s+de\s+(\d{6,12}),\s*([^.]+?)\s+as\s+/is
   );
@@ -161,15 +135,18 @@ function aplicarPagamento(membro, valorPago, valorDiario) {
   return { novoTotalPago, diasPagos, resto };
 }
 
-// Monta a lista de todos os membros do grupo com o checklist de dias pagos,
-// no formato "Nome ✅✅✅" 
 async function gerarListaChecklist(db, idGrupo, valorDiario) {
   const membros = await db.all('SELECT nome, total_pago FROM membros WHERE id_grupo = ?', [idGrupo]);
   if (membros.length === 0) return '(nenhum membro registado ainda)';
   return membros
     .map(m => {
-      const dias = Math.floor((m.total_pago || 0) / valorDiario);
-      return `${m.nome} ${dias > 0 ? '✅'.repeat(dias) : '(sem pagamentos ainda)'}`;
+      const total = m.total_pago || 0;
+      const dias = Math.floor(total / valorDiario);
+      const resto = Math.round((total - dias * valorDiario) * 100) / 100;
+      const checklist = dias > 0 ? '✅'.repeat(dias) : '';
+      const credito = resto > 0 ? `+${resto}` : '';
+      const situacao = (checklist + credito) || '(sem pagamentos ainda)';
+      return `${m.nome} ${situacao}`;
     })
     .join('\n');
 }
@@ -205,7 +182,7 @@ async function tratarMensagem(sock, db, msg) {
   if (!msg?.message || msg.key.fromMe) return;
 
   if (msg.message.editedMessage || msg.message.protocolMessage) {
-    console.log('Mensagem editada/protocolo recebida — ignorada de propósito, nunca conta como confirmação.');
+    console.log('Mensagem editada/protocolo recebida. ignorada de propósito, nunca conta como confirmação.');
     return;
   }
 
@@ -235,7 +212,7 @@ async function tratarMensagem(sock, db, msg) {
       return;
     }
     if (!ehGrupo) {
-      await sock.sendMessage(idConversa, { text: 'Este comando só funciona dentro de um grupo do WhatsApp — cria/abre o grupo primeiro, adiciona o bot, e digita !novo lá dentro.' });
+      await sock.sendMessage(idConversa, { text: 'Este comando só funciona dentro de um grupo do WhatsApp. cria/abre o grupo primeiro, adiciona o bot, e digita !novo lá dentro.' });
       return;
     }
     const partes = texto.split(' ').filter(Boolean);
@@ -245,7 +222,7 @@ async function tratarMensagem(sock, db, msg) {
 
     if (!nome || Number.isNaN(valor) || Number.isNaN(dias)) {
       await sock.sendMessage(idConversa, {
-        text: 'Uso correto: !novo NomeDoGrupo Valor DiasDoCiclo\nEx: !novo Familia85 100 30'
+        text: 'Uso correto: !novo NomeDoGrupo Valor DiasDoCiclo\nEx: !novo GRUPO85 100 30'
       });
       return;
     }
@@ -264,12 +241,12 @@ async function tratarMensagem(sock, db, msg) {
       text:
         'Comandos do Xitike:\n' +
         '!novo Nome Valor DiasCiclo — cria um xitique (admin)\n' +
-        '!cadastrar 84XXXXXXX Nome Completo — regista um membro que ainda não escreveu no grupo (admin)\n' +
+        '!cadastrar 840000000 Nome Completo — regista um membro que ainda não escreveu no grupo (admin)\n' +
         '!pagos (seguido de uma linha "numero Nome valor" por membro) — importa em massa quem já pagou (admin)\n' +
-        '!atribuir IDTransacao 840001000 — atribui manualmente um pagamento pendente a um membro (admin)\n' +
-        '!banir 840001000 — remove um membro do grupo manualmente (admin)\n' +
+        '!atribuir IDTransacao 840000000 — atribui manualmente um pagamento pendente a um membro (admin)\n' +
+        '!banir 840000000 — remove um membro do grupo manualmente (admin)\n' +
         '!bloqueados — lista quem foi sinalizado por reciclar comprovativo (admin)\n' +
-        '!desbloquear   840001000 — tira alguém da lista de sinalizados (admin)\n' +
+        '!desbloquear   840000000 — tira alguém da lista de sinalizados (admin)\n' +
         '!pendentes — lista pagamentos que a Célia ainda precisa atribuir\n' +
         '!resumo — mostra a situação de cada membro\n' +
         'Cliente: cola aqui a tua SMS de confirmação de pagamento (M-Pesa/e-Mola).\n' +
@@ -297,7 +274,7 @@ async function tratarMensagem(sock, db, msg) {
     if (!ehAdmin) return;
     const numeroAlvo = texto.split(' ').filter(Boolean)[1];
     if (!numeroAlvo) {
-      await sock.sendMessage(idConversa, { text: 'Uso correto: !banir 840001000' });
+      await sock.sendMessage(idConversa, { text: 'Uso correto: !banir 840000000' });
       return;
     }
     const jidAlvo = numeroAlvo.includes('@') ? numeroAlvo : `${numeroAlvo.replace(/\D/g, '')}@s.whatsapp.net`;
@@ -306,7 +283,7 @@ async function tratarMensagem(sock, db, msg) {
       await sock.sendMessage(idConversa, { text: `${numeroAlvo} removido do grupo.` });
     } catch (erro) {
       console.error('Não consegui remover:', erro);
-      await sock.sendMessage(idConversa, { text: 'Não consegui remover — o Xitike precisa de ser admin do grupo.' });
+      await sock.sendMessage(idConversa, { text: 'Não consegui remover do grupo, precisa de ser admin do grupo.' });
     }
     return;
   }
@@ -327,7 +304,7 @@ async function tratarMensagem(sock, db, msg) {
     if (!ehAdmin) return;
     const numeroAlvo = texto.split(' ').filter(Boolean)[1];
     if (!numeroAlvo) {
-      await sock.sendMessage(idConversa, { text: 'Uso correto: !desbloquear 840001000' });
+      await sock.sendMessage(idConversa, { text: 'Uso correto: !desbloquear 840000000' });
       return;
     }
     const jidAlvo = numeroAlvo.includes('@') ? numeroAlvo : `${numeroAlvo.replace(/\D/g, '')}@s.whatsapp.net`;
@@ -342,7 +319,7 @@ async function tratarMensagem(sock, db, msg) {
     const numeroAlvo = partes[1];
     const nomeAlvo = partes.slice(2).join(' ');
     if (!numeroAlvo || !nomeAlvo) {
-      await sock.sendMessage(idConversa, { text: 'Uso correto: !cadastrar 840001000 Nome Completo' });
+      await sock.sendMessage(idConversa, { text: 'Uso correto: !cadastrar 840000000 Nome Completo' });
       return;
     }
     const jidAlvo = `${numeroAlvo.replace(/\D/g, '')}@s.whatsapp.net`;
@@ -360,7 +337,7 @@ async function tratarMensagem(sock, db, msg) {
     const linhas = texto.split('\n').slice(1).map(l => l.trim()).filter(Boolean);
     if (linhas.length === 0) {
       await sock.sendMessage(idConversa, {
-        text: 'Uso correto (uma linha por membro):\n!pagos\n840001000 Nome Completo 100\n840001000 Outro Nome 100'
+        text: 'Uso correto (uma linha por membro):\n!pagos\n840000000 Nome Completo 100\n840000000 Outro Nome 100'
       });
       return;
     }
@@ -412,7 +389,7 @@ async function tratarMensagem(sock, db, msg) {
     }
     if (pendentes.length > 0) {
       const linhas = pendentes.map(p => `${p.id_transacao} — ${p.valor}MT de "${p.remetente_nome}"`).join('\n');
-      resposta += `Precisam de atribuição manual (!atribuir IDTransacao 840001000):\n${linhas}`;
+      resposta += `Precisam de atribuição manual (!atribuir IDTransacao 840000000):\n${linhas}`;
     }
     await sock.sendMessage(idConversa, { text: resposta.trim() });
     return;
@@ -424,28 +401,13 @@ async function tratarMensagem(sock, db, msg) {
     const idTransacao = partes[1];
     const numeroAlvo = partes[2];
     if (!idTransacao || !numeroAlvo) {
-      await sock.sendMessage(idConversa, { text: 'Uso correto: !atribuir IDTransacao 840001000' });
+      await sock.sendMessage(idConversa, { text: 'Uso correto: !atribuir IDTransacao 840000000' });
       return;
     }
-    const pendente = await db.get('SELECT * FROM pagamentos_pendentes WHERE id_transacao = ? AND id_grupo = ?', [idTransacao, idConversa]);
-    if (!pendente) {
-      await sock.sendMessage(idConversa, { text: 'Não encontrei esse ID nos pagamentos pendentes.' });
-      return;
+    const resultado = await atribuirPagamentoPendente(idTransacao, numeroAlvo);
+    if (!resultado.ok) {
+      await sock.sendMessage(idConversa, { text: resultado.motivo });
     }
-    const jidAlvo = numeroAlvo.includes('@') ? numeroAlvo : `${numeroAlvo.replace(/\D/g, '')}@s.whatsapp.net`;
-    await db.run(
-      `INSERT INTO membros (id_whatsapp, id_grupo, nome) VALUES (?, ?, ?)
-       ON CONFLICT(id_whatsapp, id_grupo) DO NOTHING`,
-      [jidAlvo, idConversa, numeroAlvo]
-    );
-    const membroAlvo = await db.get('SELECT * FROM membros WHERE id_whatsapp = ? AND id_grupo = ?', [jidAlvo, idConversa]);
-    const { novoTotalPago } = aplicarPagamento(membroAlvo, pendente.valor, grupo.valor_diario);
-    await db.run(
-      `UPDATE membros SET total_pago = ?, ultimo_pagamento = date('now') WHERE id_whatsapp = ? AND id_grupo = ?`,
-      [novoTotalPago, jidAlvo, idConversa]
-    );
-    await db.run('DELETE FROM pagamentos_pendentes WHERE id_transacao = ?', [idTransacao]);
-    await sock.sendMessage(idConversa, { text: `Pagamento de ${pendente.valor}MT atribuído a ${membroAlvo.nome}.\n\n${await gerarListaChecklist(db, idConversa, grupo.valor_diario)}` });
     return;
   }
 
@@ -464,7 +426,7 @@ async function tratarMensagem(sock, db, msg) {
         [idConversa, remetente, nomeContato, texto]
       );
       await sock.sendMessage(idConversa, {
-        text: `${nomeContato}, recebi a tua mensagem mas não consegui reconhecer o formato do comprovativo. Confirma manualmente com a Célia por agora — este caso vai ser reportado pra corrigirmos o reconhecimento automático.`
+        text: `${nomeContato}, recebi a tua mensagem mas não consegui reconhecer o formato do comprovativo. Confirma manualmente com o ADMIN por agora. este caso vai ser reportado pra corrigirmos o reconhecimento automático.`
       });
     }
     return;
@@ -478,7 +440,7 @@ async function tratarMensagem(sock, db, msg) {
         await sock.groupParticipantsUpdate(idConversa, [remetente], 'remove');
       } catch (erroRemocao) {
         console.error('Não consegui remover o membro (o bot é admin do grupo?):', erroRemocao);
-        await sock.sendMessage(idConversa, { text: `Não consegui remover ${nomeContato} automaticamente — o Xitike precisa de ser admin do grupo pra isso.` });
+        await sock.sendMessage(idConversa, { text: `Não consegui remover ${nomeContato} automaticamente. o Xitike precisa de ser admin do grupo pra isso.` });
       }
     } else {
       await sock.sendMessage(idConversa, { text: `Este comprovativo (${confirmacao.id_transacao}) já tinha sido registado antes. Não contado em duplicado.` });
@@ -508,7 +470,7 @@ async function tratarMensagem(sock, db, msg) {
           [confirmacao.id_transacao, idConversa, remetente, confirmacao.valor, nomeContato]
         );
         await sock.sendMessage(idConversa, {
-          text: `Recebi a tua confirmação, ${nomeContato}. A aguardar a SMS real chegar à Célia pra validar — assim que chegar, credito automaticamente.`
+          text: `Recebi a tua confirmação, ${nomeContato}. A aguardar a SMS real chegar à Célia pra validar. assim que chegar, credito automaticamente.`
         });
         return;
       }
@@ -551,7 +513,7 @@ async function tratarMensagem(sock, db, msg) {
     );
     const motivo = ambiguo ? 'o nome bateu com mais de um membro' : 'não encontrei esse nome em nenhum membro';
     await sock.sendMessage(idConversa, {
-      text: `Recebi ${confirmacao.valor}MT de "${confirmacao.remetente_nome}", mas ${motivo}. Usa !atribuir ${confirmacao.id_transacao} 84XXXXXXX pra ligar ao membro certo.`
+      text: `Recebi ${confirmacao.valor}MT de "${confirmacao.remetente_nome}", mas ${motivo}. Usa !atribuir ${confirmacao.id_transacao} 840000000 pra ligar ao membro certo.`
     });
     return;
   }
@@ -564,6 +526,41 @@ async function tratarMensagem(sock, db, msg) {
 
   const lista = await gerarListaChecklist(db, idConversa, grupo.valor_diario);
   await sock.sendMessage(idConversa, { text: `Pagamento de ${confirmacao.valor}MT registado para ${membro.nome}.\n\n${lista}` });
+}
+
+export async function desbloquearMembro(idWhatsapp, idGrupo) {
+  const db = await getDb();
+  await db.run('DELETE FROM membros_bloqueados WHERE id_whatsapp = ? AND id_grupo = ?', [idWhatsapp, idGrupo]);
+  return { ok: true };
+}
+
+export async function atribuirPagamentoPendente(idTransacao, numeroAlvo) {
+  const db = await getDb();
+  const pendente = await db.get('SELECT * FROM pagamentos_pendentes WHERE id_transacao = ?', [idTransacao]);
+  if (!pendente) return { ok: false, motivo: 'Não encontrei esse ID nos pagamentos pendentes.' };
+
+  const grupo = await db.get('SELECT * FROM grupos WHERE id_grupo = ?', [pendente.id_grupo]);
+  if (!grupo) return { ok: false, motivo: 'Grupo do pagamento pendente já não existe.' };
+
+  const jidAlvo = numeroAlvo.includes('@') ? numeroAlvo : `${numeroAlvo.replace(/\D/g, '')}@s.whatsapp.net`;
+  await db.run(
+    `INSERT INTO membros (id_whatsapp, id_grupo, nome) VALUES (?, ?, ?)
+     ON CONFLICT(id_whatsapp, id_grupo) DO NOTHING`,
+    [jidAlvo, pendente.id_grupo, numeroAlvo]
+  );
+  const membroAlvo = await db.get('SELECT * FROM membros WHERE id_whatsapp = ? AND id_grupo = ?', [jidAlvo, pendente.id_grupo]);
+  const { novoTotalPago } = aplicarPagamento(membroAlvo, pendente.valor, grupo.valor_diario);
+  await db.run(
+    `UPDATE membros SET total_pago = ?, ultimo_pagamento = date('now') WHERE id_whatsapp = ? AND id_grupo = ?`,
+    [novoTotalPago, jidAlvo, pendente.id_grupo]
+  );
+  await db.run('DELETE FROM pagamentos_pendentes WHERE id_transacao = ?', [idTransacao]);
+
+  const lista = await gerarListaChecklist(db, pendente.id_grupo, grupo.valor_diario);
+  if (sockAtual) {
+    await sockAtual.sendMessage(pendente.id_grupo, { text: `Pagamento de ${pendente.valor}MT atribuído a ${membroAlvo.nome}.\n\n${lista}` });
+  }
+  return { ok: true, grupo: grupo.nome_grupo, membro: membroAlvo.nome };
 }
 
 let sockAtual = null;
@@ -586,8 +583,7 @@ export async function iniciarWhatsApp() {
           console.log('CÓDIGO DE PAREAMENTO:', codigoPareamento);
           console.log('No WhatsApp do número', numeroBot, ':');
           console.log('Aparelhos ligados > Ligar aparelho > Ligar com número de telefone');
-          console.log('Digita já — expira rápido (cerca de 1 minuto).');
-          console.log('================================\n');
+          console.log('Digita já, expira rápido (cerca de 1 minuto).');
         } catch (erro) {
           console.error('Erro ao pedir código de pareamento:', erro);
         }
