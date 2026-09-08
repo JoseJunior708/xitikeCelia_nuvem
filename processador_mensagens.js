@@ -61,7 +61,6 @@ function extrairMPesaRecebido(texto) {
 }
 
 function extrairEMolaRecebido(texto) {
-
   let m = texto.match(
     /ID d[ae] tran[sç]?acao:?\s*([a-zA-Z0-9.]+)\.\s*Recebeste\s+(\d+(?:[.,]\d{1,2})?)\s*MT\s+de conta\s+(\d{6,12}),\s*nome:\s*([^.]+?)\s+as\s+/is
   );
@@ -135,18 +134,26 @@ function aplicarPagamento(membro, valorPago, valorDiario) {
   return { novoTotalPago, diasPagos, resto };
 }
 
+// Monta a lista de todos os membros do grupo com o checklist de dias pagos,
+// no formato "Nome ✅✅✅" 
 async function gerarListaChecklist(db, idGrupo, valorDiario) {
-  const membros = await db.all('SELECT nome, total_pago FROM membros WHERE id_grupo = ?', [idGrupo]);
+  const membros = await db.all('SELECT id_whatsapp, nome, total_pago FROM membros WHERE id_grupo = ?', [idGrupo]);
   if (membros.length === 0) return '(nenhum membro registado ainda)';
+
+  const pendentes = await db.all('SELECT remetente FROM reivindicacoes_pendentes WHERE id_grupo = ?', [idGrupo]);
+  const pendentesSet = new Set(pendentes.map(p => p.remetente));
+
   return membros
-    .map(m => {
+    .map((m, i) => {
+      if (pendentesSet.has(m.id_whatsapp)) {
+        return `${i + 1}-${m.nome}=Pendente`;
+      }
       const total = m.total_pago || 0;
       const dias = Math.floor(total / valorDiario);
       const resto = Math.round((total - dias * valorDiario) * 100) / 100;
       const checklist = dias > 0 ? '✅'.repeat(dias) : '';
       const credito = resto > 0 ? `+${resto}` : '';
-      const situacao = (checklist + credito) || '(sem pagamentos ainda)';
-      return `${m.nome} ${situacao}`;
+      return `${i + 1}-${m.nome}=${checklist}${credito}`;
     })
     .join('\n');
 }
@@ -182,7 +189,7 @@ async function tratarMensagem(sock, db, msg) {
   if (!msg?.message || msg.key.fromMe) return;
 
   if (msg.message.editedMessage || msg.message.protocolMessage) {
-    console.log('Mensagem editada/protocolo recebida. ignorada de propósito, nunca conta como confirmação.');
+    console.log('Mensagem editada/protocolo recebida ignorada de propósito, nunca conta como confirmação.');
     return;
   }
 
@@ -204,7 +211,7 @@ async function tratarMensagem(sock, db, msg) {
   if (!texto) return;
 
   const ehAdmin = NUMEROS_AUTORIZADOS.includes(normalizarNumero(remetente));
-  console.log(`Mensagem de ${remetente} (normalizado: ${normalizarNumero(remetente)}) — ehAdmin: ${ehAdmin}${msg.key.participant?.endsWith('@lid') ? ' [participant original era LID: ' + msg.key.participant + ']' : ''}`);
+  console.log(`Mensagem de ${remetente} (normalizado: ${normalizarNumero(remetente)} ehAdmin: ${ehAdmin}${msg.key.participant?.endsWith('@lid') ? ' [participant original era LID: ' + msg.key.participant + ']' : ''}`);
 
   if (texto.startsWith('!novo')) {
     if (!ehAdmin) {
@@ -222,7 +229,7 @@ async function tratarMensagem(sock, db, msg) {
 
     if (!nome || Number.isNaN(valor) || Number.isNaN(dias)) {
       await sock.sendMessage(idConversa, {
-        text: 'Uso correto: !novo NomeDoGrupo Valor DiasDoCiclo\nEx: !novo GRUPO85 100 30'
+        text: 'Uso correto: !novo NomeDoGrupo Valor DiasDoCiclo\nEx: !novo Familia85 100 30'
       });
       return;
     }
@@ -283,7 +290,7 @@ async function tratarMensagem(sock, db, msg) {
       await sock.sendMessage(idConversa, { text: `${numeroAlvo} removido do grupo.` });
     } catch (erro) {
       console.error('Não consegui remover:', erro);
-      await sock.sendMessage(idConversa, { text: 'Não consegui remover do grupo, precisa de ser admin do grupo.' });
+      await sock.sendMessage(idConversa, { text: 'Não consegui remover — o Xitike precisa de ser admin do grupo.' });
     }
     return;
   }
@@ -296,7 +303,7 @@ async function tratarMensagem(sock, db, msg) {
       return;
     }
     const linhas = bloqueados.map(b => `${b.nome} — ${b.motivo}`).join('\n');
-    await sock.sendMessage(idConversa, { text: `Sinalizados:\n${linhas}\n\nUsa !desbloquear 840001000 pra limpar depois de reveres.` });
+    await sock.sendMessage(idConversa, { text: `Sinalizados:\n${linhas}\n\nUsa !desbloquear 840000000 pra limpar depois de reveres.` });
     return;
   }
 
@@ -420,13 +427,13 @@ async function tratarMensagem(sock, db, msg) {
   const confirmacao = extrairDadosConfirmacao(texto);
   if (!confirmacao) {
     if (/\bMT\b|confirmad[oa]|transferist[e]s?|recebest[e]s?/i.test(texto)) {
-      console.log('Mensagem parece confirmação mas não bateu com nenhum formato conhecido:\n---\n' + texto + '\n---');
+      console.log('Mensagem parece confirmação mas não bateu com nenhum formato conhecido:\n\n' + texto + '\n');
       await db.run(
         `INSERT INTO mensagens_nao_reconhecidas (id_grupo, remetente, nome_contato, texto) VALUES (?, ?, ?, ?)`,
         [idConversa, remetente, nomeContato, texto]
       );
       await sock.sendMessage(idConversa, {
-        text: `${nomeContato}, recebi a tua mensagem mas não consegui reconhecer o formato do comprovativo. Confirma manualmente com o ADMIN por agora. este caso vai ser reportado pra corrigirmos o reconhecimento automático.`
+        text: `${nomeContato}, recebi a tua mensagem mas não consegui reconhecer o formato do comprovativo. Confirma manualmente com a Célia por agora! este caso vai ser reportado pra corrigirmos o reconhecimento automático.`
       });
     }
     return;
@@ -469,9 +476,8 @@ async function tratarMensagem(sock, db, msg) {
            ON CONFLICT(id_transacao) DO NOTHING`,
           [confirmacao.id_transacao, idConversa, remetente, confirmacao.valor, nomeContato]
         );
-        await sock.sendMessage(idConversa, {
-          text: `Recebi a tua confirmação, ${nomeContato}. A aguardar a SMS real chegar à Célia pra validar. assim que chegar, credito automaticamente.`
-        });
+        const listaPendente = await gerarListaChecklist(db, idConversa, grupo.valor_diario);
+        await sock.sendMessage(idConversa, { text: listaPendente });
         return;
       }
 
@@ -500,7 +506,7 @@ async function tratarMensagem(sock, db, msg) {
       [novoTotalPago, remetente, idConversa]
     );
     const lista = await gerarListaChecklist(db, idConversa, grupo.valor_diario);
-    await sock.sendMessage(idConversa, { text: `Pagamento de ${confirmacao.valor}MT confirmado para ${nomeContato}.\n\n${lista}` });
+    await sock.sendMessage(idConversa, { text: lista });
     return;
   }
   const membrosDoGrupo = await db.all('SELECT * FROM membros WHERE id_grupo = ?', [idConversa]);
@@ -525,7 +531,7 @@ async function tratarMensagem(sock, db, msg) {
   );
 
   const lista = await gerarListaChecklist(db, idConversa, grupo.valor_diario);
-  await sock.sendMessage(idConversa, { text: `Pagamento de ${confirmacao.valor}MT registado para ${membro.nome}.\n\n${lista}` });
+  await sock.sendMessage(idConversa, { text: lista });
 }
 
 export async function desbloquearMembro(idWhatsapp, idGrupo) {
@@ -558,7 +564,7 @@ export async function atribuirPagamentoPendente(idTransacao, numeroAlvo) {
 
   const lista = await gerarListaChecklist(db, pendente.id_grupo, grupo.valor_diario);
   if (sockAtual) {
-    await sockAtual.sendMessage(pendente.id_grupo, { text: `Pagamento de ${pendente.valor}MT atribuído a ${membroAlvo.nome}.\n\n${lista}` });
+    await sockAtual.sendMessage(pendente.id_grupo, { text: lista });
   }
   return { ok: true, grupo: grupo.nome_grupo, membro: membroAlvo.nome };
 }
@@ -583,7 +589,7 @@ export async function iniciarWhatsApp() {
           console.log('CÓDIGO DE PAREAMENTO:', codigoPareamento);
           console.log('No WhatsApp do número', numeroBot, ':');
           console.log('Aparelhos ligados > Ligar aparelho > Ligar com número de telefone');
-          console.log('Digita já, expira rápido (cerca de 1 minuto).');
+          console.log('Digita já! expira rápido (cerca de 1 minuto).');
         } catch (erro) {
           console.error('Erro ao pedir código de pareamento:', erro);
         }
@@ -670,9 +676,7 @@ export async function processarSmsExterna(texto) {
 
   const lista = await gerarListaChecklist(db, grupo.id_grupo, grupo.valor_diario);
   if (sockAtual) {
-    await sockAtual.sendMessage(grupo.id_grupo, {
-      text: `Pagamento de ${confirmacao.valor}MT confirmado para ${membro.nome} (SMS real validada).\n\n${lista}`
-    });
+    await sockAtual.sendMessage(grupo.id_grupo, { text: lista });
   }
 
   return { ok: true, status: 'confirmado', grupo: grupo.nome_grupo, membro: membro.nome };
