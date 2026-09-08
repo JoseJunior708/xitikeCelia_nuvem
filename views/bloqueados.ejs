@@ -5,17 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { darkMode: 'media' }</script>
-  <title>Xitike Célia — Bloqueados</title>
+  <title>Bloqueados</title>
 </head>
 <body class="bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 min-h-screen transition-colors duration-500 overflow-x-hidden">
 
   <main class="max-w-5xl mx-auto p-6 md:py-12">
-    <header class="mb-10 flex items-center justify-between flex-wrap gap-4">
+    <header class="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
       <div>
-        <h1 class="text-3xl font-black">Sinalizados</h1>
-        <p class="text-zinc-500">Reciclaram um comprovativo, mas já tinham recebido, não serão removidos automaticamente.</p>
+        <h1 class="text-2xl sm:text-3xl font-black">Sinalizados</h1>
+        <p class="text-zinc-500 text-sm">Reciclaram um comprovativo, mas já tinham recebido, não serão removidos automaticamente.</p>
       </div>
-      <a href="/admin/pagamentos" class="text-xs font-bold uppercase tracking-wider text-zinc-500 hover:text-pink-500 transition-colors">Ver pagamentos →</a>
+      <div class="flex items-center gap-2">
+        <a href="/admin" class="px-4 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-bold uppercase tracking-wider text-zinc-300 hover:bg-zinc-800 transition-colors">← Início</a>
+        <a href="/admin/pagamentos" class="px-4 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-bold uppercase tracking-wider text-zinc-300 hover:bg-zinc-800 transition-colors">Pagamentos →</a>
+      </div>
     </header>
 
     <% if (bloqueados.length === 0) { %>
