@@ -615,15 +615,15 @@ export async function iniciarWhatsApp() {
         if (codigo === DisconnectReason.loggedOut) {
           fs.rm('auth_info', { recursive: true, force: true }, (erro) => {
             if (erro) console.error('Não consegui limpar auth_info:', erro);
-            console.log('Sessão expirada. Reconectando em 3 segundos...');
+            console.log('Sessão expirada. Reconectando em 5 segundos...');
             tentativasReconectar = 0;
-            setTimeout(conectar, 3000);
+            setTimeout(conectar, 5000);
           });
           return;
         }
 
         tentativasReconectar++;
-        const delay = Math.min(3000 * tentativasReconectar, 30000);
+        const delay = Math.min(10000 * tentativasReconectar, 60000);
         console.log(`Reconectando em ${delay / 1000}s (tentativa ${tentativasReconectar}/${MAX_TENTATIVAS})...`);
         setTimeout(conectar, delay);
       } else if (connection === 'open') {
