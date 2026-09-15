@@ -573,8 +573,15 @@ let sockAtual = null;
 
 export async function iniciarWhatsApp() {
   const db = await getDb();
+  let tentativasReconectar = 0;
+  const MAX_TENTATIVAS = 10;
 
   async function conectar() {
+    if (tentativasReconectar >= MAX_TENTATIVAS) {
+      console.error('Muitas tentativas de reconexão. Reinicie manualmente.');
+      return;
+    }
+
     const { state, saveCreds } = await useMultiFileAuthState('auth_info');
     const { version } = await fetchLatestBaileysVersion();
     console.log('Usando versão do protocolo WhatsApp:', version.join('.'));
@@ -608,16 +615,20 @@ export async function iniciarWhatsApp() {
         if (codigo === DisconnectReason.loggedOut) {
           fs.rm('auth_info', { recursive: true, force: true }, (erro) => {
             if (erro) console.error('Não consegui limpar auth_info:', erro);
-            console.log('Sessão expirada. Reconectando para gerar novo código...');
-            conectar();
+            console.log('Sessão expirada. Reconectando em 3 segundos...');
+            tentativasReconectar = 0;
+            setTimeout(conectar, 3000);
           });
           return;
         }
 
-        console.log('Reconectando...');
-        conectar();
+        tentativasReconectar++;
+        const delay = Math.min(3000 * tentativasReconectar, 30000);
+        console.log(`Reconectando em ${delay / 1000}s (tentativa ${tentativasReconectar}/${MAX_TENTATIVAS})...`);
+        setTimeout(conectar, delay);
       } else if (connection === 'open') {
         console.log('Xitike conectado ao WhatsApp.');
+        tentativasReconectar = 0;
       }
     });
 
