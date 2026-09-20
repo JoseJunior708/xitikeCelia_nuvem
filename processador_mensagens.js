@@ -576,6 +576,9 @@ export async function iniciarWhatsApp() {
   let tentativasReconectar = 0;
   const MAX_TENTATIVAS = 10;
 
+  console.log('A aguardar estabilização do ambiente antes de conectar...');
+  await new Promise(resolve => setTimeout(resolve, 10000));
+
   async function conectar() {
     if (tentativasReconectar >= MAX_TENTATIVAS) {
       console.error('Muitas tentativas de reconexão. Reinicie manualmente.');
