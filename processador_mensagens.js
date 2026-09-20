@@ -596,10 +596,13 @@ export async function iniciarWhatsApp() {
       setTimeout(async () => {
         try {
           const codigoPareamento = await sock.requestPairingCode(numeroBot);
+          console.log('=========================================');
           console.log('CÓDIGO DE PAREAMENTO:', codigoPareamento);
+          console.log('=========================================');
           console.log('No WhatsApp do número', numeroBot, ':');
           console.log('Aparelhos ligados > Ligar aparelho > Ligar com número de telefone');
-          console.log('Digita já! expira rápido (cerca de 1 minuto).');
+          console.log('DIGITA JÁ! O código expira em 1 minuto.');
+          console.log('=========================================\n');
         } catch (erro) {
           console.error('Erro ao pedir código de pareamento:', erro);
         }
