@@ -219,12 +219,20 @@ const EXTENSAO_POR_MIMETYPE = { 'image/png': '.png', 'image/jpeg': '.jpg', 'imag
 
 app.post('/admin/logo', verificarLogin, (req, res) => {
   upload.single('logo')(req, res, (erroUpload) => {
+    console.log('--- Upload da logo ---');
+    console.log('Erro upload:', erroUpload);
+    console.log('req.file:', req.file);
+    console.log('req.body:', req.body);
     if (erroUpload) {
       console.error('Erro no upload da logo:', erroUpload);
       return res.status(400).send('Erro no upload: ' + erroUpload.message);
     }
     try {
-      if (!req.file) return res.status(400).send('Nenhum ficheiro recebido.');
+      if (!req.file) {
+        console.log('Nenhum ficheiro recebido pelo multer');
+        return res.status(400).send('Nenhum ficheiro recebido.');
+      }
+      console.log('Ficheiro recebido:', req.file.originalname, req.file.mimetype, req.file.size);
       const extensao = EXTENSAO_POR_MIMETYPE[req.file.mimetype];
       if (!extensao) {
         fs.unlinkSync(req.file.path);
@@ -234,10 +242,11 @@ app.post('/admin/logo', verificarLogin, (req, res) => {
         try { fs.unlinkSync('public/logo' + ext); } catch {}
       }
       fs.renameSync(req.file.path, 'public/logo' + extensao);
+      console.log('Logo guardada como public/logo' + extensao);
       res.redirect('/admin');
     } catch (erro) {
       console.error('Erro ao processar a logo:', erro);
-      res.status(500).send('Erro ao processar a imagem.');
+      res.status(500).send('Erro ao processar a imagem: ' + erro.message);
     }
   });
 });
