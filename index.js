@@ -13,8 +13,11 @@ import { criarTabelas } from './init_db.js';
 fs.mkdirSync('public/tmp', { recursive: true });
 const upload = multer({
   dest: 'public/tmp/',
-  limits: { fileSize: 3 * 1024 * 1024 }, 
-  fileFilter: (req, file, cb) => cb(null, /^image\/(png|jpe?g|webp)$/.test(file.mimetype))
+  limits: { fileSize: 10 * 1024 * 1024 }, 
+  fileFilter: (req, file, cb) => {
+    console.log('Multer a receber ficheiro:', file.originalname, file.mimetype);
+    cb(null, /^image\/(png|jpe?g|webp)$/.test(file.mimetype));
+  }
 });
 
 const SESSION_SECRET = process.env.SESSION_SECRET;
