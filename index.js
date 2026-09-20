@@ -209,46 +209,31 @@ function obterIpLocal() {
 
 app.get('/logo', (req, res) => {
   for (const ext of ['.png', '.jpg', '.jpeg', '.webp']) {
-    if (fs.existsSync('public/logo' + ext)) return res.sendFile(process.cwd() + '/public/logo' + ext);
+    const caminho = 'public/logo' + ext;
+    if (fs.existsSync(caminho)) return res.sendFile(process.cwd() + '/' + caminho);
   }
   res.status(404).end();
 });
 
 const EXTENSAO_POR_MIMETYPE = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp' };
 
-app.post('/admin/logo', verificarLogin, (req, res) => {
-  upload.single('logo')(req, res, (erroUpload) => {
-    if (erroUpload) {
-      console.error('Erro no upload da logo:', erroUpload);
-      return res.status(400).send('Erro no upload: ' + erroUpload.message);
-    }
-    try {
-      if (req.file) {
-        const extensao = EXTENSAO_POR_MIMETYPE[req.file.mimetype];
-        if (!extensao) {
-          fs.unlinkSync(req.file.path);
-          return res.status(400).send('Tipo de ficheiro não suportado.');
-        }
-        for (const ext of Object.values(EXTENSAO_POR_MIMETYPE)) {
-          try { fs.unlinkSync('public/logo' + ext); } catch { 
-            
-           }
-        }
-        fs.renameSync(req.file.path, 'public/logo' + extensao);
-      }
-      res.redirect('/admin');
-    } catch (erro) {
-      console.error('Erro ao processar a logo:', erro);
-      res.status(500).send('Erro ao processar a imagem.');
-    }
-  });
+app.post('/admin/logo', verificarLogin, upload.single('logo'), (req, res) => {
+  if (!req.file) return res.status(400).send('Nenhum ficheiro recebido.');
+  const extensao = EXTENSAO_POR_MIMETYPE[req.file.mimetype];
+  if (!extensao) {
+    fs.unlinkSync(req.file.path);
+    return res.status(400).send('Tipo de ficheiro não suportado.');
+  }
+  for (const ext of Object.values(EXTENSAO_POR_MIMETYPE)) {
+    try { fs.unlinkSync('public/logo' + ext); } catch {}
+  }
+  fs.renameSync(req.file.path, 'public/logo' + extensao);
+  res.redirect('/admin');
 });
 
 app.post('/admin/logo/remover', verificarLogin, (req, res) => {
   for (const ext of Object.values(EXTENSAO_POR_MIMETYPE)) {
-    try { fs.unlinkSync('public/logo' + ext); } catch { 
-
-     }
+    try { fs.unlinkSync('public/logo' + ext); } catch {}
   }
   res.redirect('/admin');
 });
