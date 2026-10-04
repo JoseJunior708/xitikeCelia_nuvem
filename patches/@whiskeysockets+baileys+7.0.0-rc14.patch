@@ -20,7 +20,7 @@ index f2003ac..9920fee 100644
                  const primaryIdentityPublicKey = toRequiredBuffer(getBinaryNodeChildBuffer(linkCodeCompanionReg, 'primary_identity_pub'));
                  const primaryEphemeralPublicKeyWrapped = toRequiredBuffer(getBinaryNodeChildBuffer(linkCodeCompanionReg, 'link_code_pairing_wrapped_primary_ephemeral_pub'));
 diff --git a/node_modules/@whiskeysockets/baileys/lib/Socket/socket.js b/node_modules/@whiskeysockets/baileys/lib/Socket/socket.js
-index ae34a8f..696bb66 100644
+index ae34a8f..a0b44e8 100644
 --- a/node_modules/@whiskeysockets/baileys/lib/Socket/socket.js
 +++ b/node_modules/@whiskeysockets/baileys/lib/Socket/socket.js
 @@ -6,7 +6,7 @@ import { proto } from '../../WAProto/index.js';
@@ -52,17 +52,18 @@ index ae34a8f..696bb66 100644
                      ]
                  }
              ]
+-        });
 +        };
 +        // WhatsApp can reject companion_hello with a structured
 +        // <iq type="error"> (e.g. 400 bad-request). Sending it fire-and-forget
 +        // used to resolve this promise anyway and hand the caller a code that
 +        // was never registered server-side, so the phone always refused it.
-+        // Wait for the result and surface the rejection instead.
-+        const waitForResult = waitForMessage(pairingRequestId, 20000).catch((err) => {
-+            throw new Boom('O WhatsApp não respondeu ao pedido de pareamento', { statusCode: 408, data: err?.message || String(err) });
-         });
-+        await sendNode(request);
-+        assertNodeErrorFree(await waitForResult);
++        // query() waits for the reply and asserts it is error-free, so a
++        // rejection surfaces here instead of becoming a bogus code.
++        const result = await query(request, 20000);
++        if (!result) {
++            throw new Boom('O WhatsApp não respondeu ao pedido de pareamento', { statusCode: DisconnectReason.timedOut });
++        }
          return authState.creds.pairingCode;
      };
      async function generatePairingKey() {

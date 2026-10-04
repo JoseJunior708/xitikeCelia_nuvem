@@ -661,8 +661,25 @@ export async function iniciarWhatsApp() {
     }
   }
 
+  function esperarLigacaoAberta(sock, timeoutMs = 45000) {
+    if (sock.ws?.isOpen) return Promise.resolve(true);
+    return new Promise(resolve => {
+      const aoAbrir = () => { clearTimeout(limite); resolve(true); };
+      const limite = setTimeout(() => {
+        sock.ws?.off?.('open', aoAbrir);
+        resolve(false);
+      }, timeoutMs);
+      sock.ws?.once?.('open', aoAbrir);
+    });
+  }
+
   function iniciarPareamento(sock, numeroBot) {
     const pedir = async () => {
+      const aberto = await esperarLigacaoAberta(sock);
+      if (!aberto) {
+        console.warn('A ligação não abriu a tempo; o código de pareamento não foi pedido.');
+        return;
+      }
       try {
         await pedirCodigo(sock, numeroBot);
       } catch (erro) {
