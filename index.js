@@ -7,7 +7,7 @@ import sqlite3 from 'sqlite3';
 import os from 'os';
 import fs from 'fs';
 import multer from 'multer';
-import { iniciarWhatsApp, processarSmsExterna, atribuirPagamentoPendente, desbloquearMembro } from './processador_mensagens.js';
+import { iniciarWhatsApp, processarSmsExterna, atribuirPagamentoPendente, desbloquearMembro, qrComoImagem, qrDePareamento, ultimoCodigoPareamento, pedirNovoCodigoPareamento, estadoLigacaoWhatsApp } from './processador_mensagens.js';
 import { criarTabelas } from './init_db.js';
 
 fs.mkdirSync('public/tmp', { recursive: true });
@@ -103,6 +103,25 @@ app.post('/logout', (req, res) => {
   req.session.destroy(() => res.redirect('/login'));
 });
 
+app.get('/admin/parear', verificarLogin, async (req, res) => {
+  const qr = await qrComoImagem();
+  res.render('parear', {
+    qr,
+    qrDisponivel: Boolean(qrDePareamento()),
+    codigo: ultimoCodigoPareamento(),
+    estado: estadoLigacaoWhatsApp()
+  });
+});
+
+app.post('/admin/parear/codigo', verificarLogin, async (req, res) => {
+  try {
+    await pedirNovoCodigoPareamento();
+  } catch (erro) {
+    console.error('Erro ao gerar novo código de pareamento:', erro);
+  }
+  res.redirect('/admin/parear');
+});
+
 app.get('/admin', verificarLogin, async (req, res) => {
   try {
     const grupos = await db.all('SELECT * FROM grupos');
@@ -133,7 +152,7 @@ app.get('/admin', verificarLogin, async (req, res) => {
       };
     });
 
-    res.render('painel', { painelGrupos, botOnline: true, numerosRecebimentoCelia });
+    res.render('painel', { painelGrupos, botOnline: estadoLigacaoWhatsApp().ligado, numerosRecebimentoCelia });
   } catch (error) {
     console.error('ERRO NO PAINEL:', error);
     res.status(500).send('Erro ao processar o painel.');

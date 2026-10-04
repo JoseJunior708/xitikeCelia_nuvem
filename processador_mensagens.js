@@ -5,6 +5,7 @@ import { Boom } from '@hapi/boom';
 import { open } from 'sqlite';
 import sqlite3 from 'sqlite3';
 import { createWorker } from 'tesseract.js';
+import QRCode from 'qrcode';
 
 const baileysDefault = BaileysPkg.default ?? BaileysPkg;
 const makeWASocket = typeof baileysDefault === 'function' ? baileysDefault : baileysDefault.makeWASocket;
@@ -570,6 +571,38 @@ export async function atribuirPagamentoPendente(idTransacao, numeroAlvo) {
 }
 
 let sockAtual = null;
+let qrAtual = null;
+let codigoPareamentoAtual = null;
+
+export function qrDePareamento() {
+  return qrAtual;
+}
+
+export function ultimoCodigoPareamento() {
+  return codigoPareamentoAtual;
+}
+
+export async function qrComoImagem() {
+  if (!qrAtual) return null;
+  return QRCode.toDataURL(qrAtual, { margin: 1, width: 320 });
+}
+
+export async function pedirNovoCodigoPareamento() {
+  const numeroBot = (process.env.NUMERO_BOT || '').replace(/\D/g, '');
+  if (!sockAtual || !numeroBot) return null;
+  codigoPareamentoAtual = await sockAtual.requestPairingCode(numeroBot);
+  console.log('NOVO CÓDIGO DE PAREAMENTO:', codigoPareamentoAtual, '(válido ~1 minuto)');
+  return codigoPareamentoAtual;
+}
+
+export function estadoLigacaoWhatsApp() {
+  if (!sockAtual) return { ligado: false, registado: false, qr: Boolean(qrAtual) };
+  return {
+    ligado: Boolean(sockAtual.authState?.creds?.registered),
+    registado: Boolean(sockAtual.authState?.creds?.registered),
+    qr: Boolean(qrAtual)
+  };
+}
 
 export async function iniciarWhatsApp() {
   const db = await getDb();
@@ -585,26 +618,21 @@ export async function iniciarWhatsApp() {
     console.warn('CODIGO_PAREAMENTO no .env tem de ter 8 dígitos. A usar código automático.');
   }
   const CODIGO_FIXO_VALIDO = CODIGO_PAREAMENTO_FIXO.length === 8 ? CODIGO_PAREAMENTO_FIXO : null;
-  const INTERVALO_RENOVACAO_MS = 45000;
 
   function registarCodigo(numeroBot, codigo, geradoAgora) {
-    const hora = geradoAgora.toLocaleTimeString('pt-PT', { timeZone: 'Africa/Maputo' });
     console.log('=========================================');
     console.log('CÓDIGO DE PAREAMENTO:', codigo);
     console.log('=========================================');
     console.log('No WhatsApp do número', numeroBot, ':');
     console.log('Aparelhos ligados > Ligar aparelho > Ligar com número de telefone');
-    if (CODIGO_FIXO_VALIDO) {
-      console.log('Código fixo — não muda. Gerado às', hora, 'e renovado a cada 45s.');
-    } else {
-      console.log('Válido cerca de 1 minuto. Renova sozinho a cada 45s — usa sempre o código mais recente.');
-      console.log('Gerado às', hora);
-    }
+    console.log('Gerado às', geradoAgora.toLocaleTimeString('pt-PT', { timeZone: 'Africa/Maputo' }));
+    console.log('Válido ~1 minuto. Melhor usar o QR em /admin, que não expira tão depressa.');
     console.log('=========================================\n');
   }
 
   async function pedirCodigo(sock, numeroBot) {
     const codigo = await sock.requestPairingCode(numeroBot, CODIGO_FIXO_VALIDO || undefined);
+    codigoPareamentoAtual = codigo;
     registarCodigo(numeroBot, codigo, new Date());
   }
 
@@ -621,17 +649,6 @@ export async function iniciarWhatsApp() {
     if (CODIGO_FIXO_VALIDO) {
       console.log('CODIGO_PAREAMENTO definido — o código de pareamento vai ser sempre', CODIGO_FIXO_VALIDO);
     }
-
-    const renovar = setInterval(() => {
-      if (sockAtual !== sock || sock.authState?.creds?.registered) {
-        clearInterval(renovar);
-        if (sock.authState?.creds?.registered) {
-          console.log('Aparelho ligado. A parar de renovar o código de pareamento.');
-        }
-        return;
-      }
-      pedir();
-    }, INTERVALO_RENOVACAO_MS);
   }
 
   async function fecharSocket() {
@@ -667,6 +684,15 @@ export async function iniciarWhatsApp() {
 
     sock.ev.on('connection.update', (update) => {
       const { connection, lastDisconnect } = update;
+
+      if (update.qr) {
+        qrAtual = update.qr;
+        console.log('Novo QR de pareamento disponível em /admin/parear (imagem) — o QR não expira em 1 minuto.');
+      }
+
+      if (connection === 'open') {
+        qrAtual = null;
+      }
 
       if (connection === 'close') {
         const codigo = new Boom(lastDisconnect?.error)?.output?.statusCode;

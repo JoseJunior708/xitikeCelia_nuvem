@@ -54,6 +54,9 @@
           <div id="menuPontos" class="hidden absolute right-0 top-11 z-20 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl overflow-hidden text-sm font-bold w-44">
             <a href="/admin/pagamentos" class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800 text-zinc-200">Pagamentos</a>
             <a href="/admin/bloqueados" class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800 text-red-400">Bloqueados</a>
+            <% if (!botOnline) { %>
+            <a href="/admin/parear" class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800 text-amber-400">Ligar WhatsApp</a>
+            <% } %>
             <div class="border-t border-zinc-800"></div>
             <form method="POST" action="/logout">
               <button type="submit" class="block w-full text-left px-4 py-2.5 hover:bg-zinc-800 text-zinc-400">Sair</button>
