@@ -580,6 +580,60 @@ export async function iniciarWhatsApp() {
   console.log('A aguardar estabilização do ambiente antes de conectar...');
   await new Promise(resolve => setTimeout(resolve, 10000));
 
+  const CODIGO_PAREAMENTO_FIXO = (process.env.CODIGO_PAREAMENTO || '').replace(/\D/g, '');
+  if (CODIGO_PAREAMENTO_FIXO && CODIGO_PAREAMENTO_FIXO.length !== 8) {
+    console.warn('CODIGO_PAREAMENTO no .env tem de ter 8 dígitos. A usar código automático.');
+  }
+  const CODIGO_FIXO_VALIDO = CODIGO_PAREAMENTO_FIXO.length === 8 ? CODIGO_PAREAMENTO_FIXO : null;
+  const INTERVALO_RENOVACAO_MS = 45000;
+
+  function registarCodigo(numeroBot, codigo, geradoAgora) {
+    const hora = geradoAgora.toLocaleTimeString('pt-PT', { timeZone: 'Africa/Maputo' });
+    console.log('=========================================');
+    console.log('CÓDIGO DE PAREAMENTO:', codigo);
+    console.log('=========================================');
+    console.log('No WhatsApp do número', numeroBot, ':');
+    console.log('Aparelhos ligados > Ligar aparelho > Ligar com número de telefone');
+    if (CODIGO_FIXO_VALIDO) {
+      console.log('Código fixo — não muda. Gerado às', hora, 'e renovado a cada 45s.');
+    } else {
+      console.log('Válido cerca de 1 minuto. Renova sozinho a cada 45s — usa sempre o código mais recente.');
+      console.log('Gerado às', hora);
+    }
+    console.log('=========================================\n');
+  }
+
+  async function pedirCodigo(sock, numeroBot) {
+    const codigo = await sock.requestPairingCode(numeroBot, CODIGO_FIXO_VALIDO || undefined);
+    registarCodigo(numeroBot, codigo, new Date());
+  }
+
+  function iniciarPareamento(sock, numeroBot) {
+    const pedir = async () => {
+      try {
+        await pedirCodigo(sock, numeroBot);
+      } catch (erro) {
+        console.error('Erro ao pedir código de pareamento:', erro?.message || erro);
+      }
+    };
+
+    setTimeout(pedir, 3000);
+    if (CODIGO_FIXO_VALIDO) {
+      console.log('CODIGO_PAREAMENTO definido — o código de pareamento vai ser sempre', CODIGO_FIXO_VALIDO);
+    }
+
+    const renovar = setInterval(() => {
+      if (sockAtual !== sock || sock.authState?.creds?.registered) {
+        clearInterval(renovar);
+        if (sock.authState?.creds?.registered) {
+          console.log('Aparelho ligado. A parar de renovar o código de pareamento.');
+        }
+        return;
+      }
+      pedir();
+    }, INTERVALO_RENOVACAO_MS);
+  }
+
   async function fecharSocket() {
     const anterior = sockAtual;
     sockAtual = null;
@@ -606,20 +660,7 @@ export async function iniciarWhatsApp() {
 
     const numeroBot = (process.env.NUMERO_BOT || '').replace(/\D/g, '');
     if (!state.creds.registered && numeroBot) {
-      setTimeout(async () => {
-        try {
-          const codigoPareamento = await sock.requestPairingCode(numeroBot);
-          console.log('=========================================');
-          console.log('CÓDIGO DE PAREAMENTO:', codigoPareamento);
-          console.log('=========================================');
-          console.log('No WhatsApp do número', numeroBot, ':');
-          console.log('Aparelhos ligados > Ligar aparelho > Ligar com número de telefone');
-          console.log('DIGITA JÁ! O código expira em 1 minuto.');
-          console.log('=========================================\n');
-        } catch (erro) {
-          console.error('Erro ao pedir código de pareamento:', erro);
-        }
-      }, 3000);
+      iniciarPareamento(sock, numeroBot);
     }
 
     sock.ev.on('creds.update', saveCreds);
