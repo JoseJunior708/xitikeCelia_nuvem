@@ -597,18 +597,57 @@ export async function qrComoImagem() {
   return QRCode.toDataURL(qrAtual, { margin: 1, width: 320 });
 }
 
+const CODIGO_PAREAMENTO_FIXO = (process.env.CODIGO_PAREAMENTO || '').replace(/\D/g, '');
+if (CODIGO_PAREAMENTO_FIXO && CODIGO_PAREAMENTO_FIXO.length !== 8) {
+  console.warn('CODIGO_PAREAMENTO no .env tem de ter 8 dígitos. A usar código automático.');
+}
+const CODIGO_FIXO_VALIDO = CODIGO_PAREAMENTO_FIXO.length === 8 ? CODIGO_PAREAMENTO_FIXO : null;
+
+function registarCodigo(numeroBot, codigo) {
+  console.log('=========================================');
+  console.log('CÓDIGO DE PAREAMENTO:', codigo);
+  console.log('=========================================');
+  console.log('No WhatsApp do número', numeroBot, ':');
+  console.log('Aparelhos ligados > Ligar aparelho > Ligar com número de telefone');
+  console.log('Gerado às', new Date().toLocaleTimeString('pt-PT', { timeZone: 'Africa/Maputo' }));
+  console.log('Válido ~1 minuto. Se o telefone recusar, é porque o limite de pedidos foi atingido — usa o QR em /admin/parear.');
+  console.log('=========================================\n');
+}
+
+function esperarLigacaoAberta(sock, timeoutMs = 45000) {
+  if (sock.ws?.isOpen) return Promise.resolve(true);
+  return new Promise(resolve => {
+    const aoAbrir = () => { clearTimeout(limite); resolve(true); };
+    const limite = setTimeout(() => {
+      sock.ws?.off?.('open', aoAbrir);
+      resolve(false);
+    }, timeoutMs);
+    sock.ws?.once?.('open', aoAbrir);
+  });
+}
+
 export async function pedirNovoCodigoPareamento() {
   const numeroBot = (process.env.NUMERO_BOT || '').replace(/\D/g, '');
-  if (!sockAtual || !numeroBot) return null;
+  if (!sockAtual || !numeroBot) {
+    erroPareamento = sockAtual ? 'NUMERO_BOT não está definido no .env' : 'o bot ainda não tem ligação ao WhatsApp';
+    return null;
+  }
+  const aberto = await esperarLigacaoAberta(sockAtual);
+  if (!aberto) {
+    erroPareamento = 'a ligação ao WhatsApp não abriu a tempo';
+    return null;
+  }
   try {
-    codigoPareamentoAtual = await sockAtual.requestPairingCode(numeroBot);
+    codigoPareamentoAtual = await sockAtual.requestPairingCode(numeroBot, CODIGO_FIXO_VALIDO || undefined);
     erroPareamento = null;
+    registarCodigo(numeroBot, codigoPareamentoAtual);
   } catch (erro) {
     codigoPareamentoAtual = null;
     erroPareamento = erro?.message || String(erro);
+    console.warn('O WhatsApp recusou o pedido de código de pareamento:', erroPareamento);
+    console.warn('Usa o QR em /admin/parear — o caminho do QR não depende deste pedido.');
     throw erro;
   }
-  console.log('NOVO CÓDIGO DE PAREAMENTO:', codigoPareamentoAtual, '(válido ~1 minuto)');
   return codigoPareamentoAtual;
 }
 
@@ -630,67 +669,15 @@ export async function iniciarWhatsApp() {
   console.log('A aguardar estabilização do ambiente antes de conectar...');
   await new Promise(resolve => setTimeout(resolve, 10000));
 
-  const CODIGO_PAREAMENTO_FIXO = (process.env.CODIGO_PAREAMENTO || '').replace(/\D/g, '');
-  if (CODIGO_PAREAMENTO_FIXO && CODIGO_PAREAMENTO_FIXO.length !== 8) {
-    console.warn('CODIGO_PAREAMENTO no .env tem de ter 8 dígitos. A usar código automático.');
-  }
-  const CODIGO_FIXO_VALIDO = CODIGO_PAREAMENTO_FIXO.length === 8 ? CODIGO_PAREAMENTO_FIXO : null;
-
-  function registarCodigo(numeroBot, codigo, geradoAgora) {
-    console.log('=========================================');
-    console.log('CÓDIGO DE PAREAMENTO:', codigo);
-    console.log('=========================================');
-    console.log('No WhatsApp do número', numeroBot, ':');
-    console.log('Aparelhos ligados > Ligar aparelho > Ligar com número de telefone');
-    console.log('Gerado às', geradoAgora.toLocaleTimeString('pt-PT', { timeZone: 'Africa/Maputo' }));
-    console.log('Válido ~1 minuto. Melhor usar o QR em /admin, que não expira tão depressa.');
-    console.log('=========================================\n');
-  }
-
-  async function pedirCodigo(sock, numeroBot) {
-    try {
-      const codigo = await sock.requestPairingCode(numeroBot, CODIGO_FIXO_VALIDO || undefined);
-      codigoPareamentoAtual = codigo;
-      erroPareamento = null;
-      registarCodigo(numeroBot, codigo, new Date());
-    } catch (erro) {
-      codigoPareamentoAtual = null;
-      erroPareamento = erro?.message || String(erro);
-      console.warn('O WhatsApp recusou o pedido de código de pareamento:', erroPareamento);
-      console.warn('Usa o QR em /admin/parear — o caminho do QR não depende deste pedido.');
-    }
-  }
-
-  function esperarLigacaoAberta(sock, timeoutMs = 45000) {
-    if (sock.ws?.isOpen) return Promise.resolve(true);
-    return new Promise(resolve => {
-      const aoAbrir = () => { clearTimeout(limite); resolve(true); };
-      const limite = setTimeout(() => {
-        sock.ws?.off?.('open', aoAbrir);
-        resolve(false);
-      }, timeoutMs);
-      sock.ws?.once?.('open', aoAbrir);
-    });
-  }
-
-  function iniciarPareamento(sock, numeroBot) {
-    const pedir = async () => {
-      const aberto = await esperarLigacaoAberta(sock);
-      if (!aberto) {
-        console.warn('A ligação não abriu a tempo; o código de pareamento não foi pedido.');
-        return;
-      }
-      try {
-        await pedirCodigo(sock, numeroBot);
-      } catch (erro) {
-        console.error('Erro ao pedir código de pareamento:', erro?.message || erro);
-      }
-    };
-
-    setTimeout(pedir, 3000);
+  function iniciarPareamento() {
+    // O caminho do código de 8 dígitos está limitado pelo WhatsApp
+    // ("rate-overlimit") e queimar esse limite não ajuda em nada: o QR é
+    // gerado automaticamente pelo protocolo e não precisa deste pedido.
+    // Só se pede código quando alguém clica no botão em /admin/parear.
     if (CODIGO_FIXO_VALIDO) {
       console.log('CODIGO_PAREAMENTO definido — o código de pareamento vai ser sempre', CODIGO_FIXO_VALIDO);
     }
+    console.log('Pareamento: usa o QR em /admin/parear. O código de 8 dígitos só a pedido.');
   }
 
   async function fecharSocket() {
@@ -717,9 +704,12 @@ export async function iniciarWhatsApp() {
     const sock = makeWASocket({ auth: state, version, printQRInTerminal: false });
     sockAtual = sock;
 
+    const sessaoEstavaPareada = Boolean(state.creds.registered);
+
     const numeroBot = (process.env.NUMERO_BOT || '').replace(/\D/g, '');
-    if (!state.creds.registered && numeroBot) {
-      iniciarPareamento(sock, numeroBot);
+    if (!sessaoEstavaPareada) {
+      if (numeroBot) iniciarPareamento();
+      else console.log('Sem sessão em', PASTA_AUTH, 'e sem NUMERO_BOT no .env — a aguardar QR em /admin/parear.');
     }
 
     sock.ev.on('creds.update', saveCreds);
@@ -730,6 +720,11 @@ export async function iniciarWhatsApp() {
       if (update.qr) {
         qrAtual = update.qr;
         console.log('Novo QR de pareamento disponível em /admin/parear (imagem) — o QR não expira em 1 minuto.');
+        if (process.env.QR_NO_TERMINAL === '1') {
+          QRCode.toString(update.qr, { type: 'terminal', small: true }, (erro, texto) => {
+            if (!erro) console.log('\n' + texto + '\n');
+          });
+        }
       }
 
       if (connection === 'open') {
@@ -741,6 +736,16 @@ export async function iniciarWhatsApp() {
         console.log('Conexão do WhatsApp fechada. Código:', codigo);
 
         if (codigo === DisconnectReason.loggedOut) {
+          if (!sessaoEstavaPareada) {
+            // 401 durante uma tentativa de registo significa que o
+            // pareamento não completou — não que a sessão foi revogada.
+            // Apagar a pasta aqui destruía uma sessão boa por causa de uma
+            // falha de registo.
+            console.log('Pareamento não completou (401). A pasta de sessão foi mantida; a tentar de novo em 15s...');
+            tentativasReconectar = 0;
+            setTimeout(conectar, 15000);
+            return;
+          }
           fs.rm(PASTA_AUTH, { recursive: true, force: true }, (erro) => {
             if (erro) console.error('Não consegui limpar a pasta de sessão:', erro);
             console.log('Sessão expirada. Reconectando em 15 segundos...');
@@ -755,6 +760,14 @@ export async function iniciarWhatsApp() {
           console.log('O WhatsApp pediu reinício da ligação (515). Reconectando em 3s...');
           setTimeout(conectar, 3000);
           return;
+        }
+
+        if (codigo === DisconnectReason.timedOut) {
+          console.log('Tempo esgotado a parear (408). Se nãopareares em 2 minutos o QR é descartado e começa outro — usa /admin/parear.');
+        }
+
+        if (codigo === DisconnectReason.connectionReplaced) {
+          console.log('Outra instância do bot tomou conta desta sessão (440). Fecha o outro processo antes de continuar.');
         }
 
         tentativasReconectar++;
