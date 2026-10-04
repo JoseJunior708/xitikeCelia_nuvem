@@ -574,6 +574,11 @@ let sockAtual = null;
 const PASTA_AUTH = process.env.AUTH_DIR || 'auth_info';
 let qrAtual = null;
 let codigoPareamentoAtual = null;
+let erroPareamento = null;
+
+export function erroDePareamento() {
+  return erroPareamento;
+}
 
 export function pastaAuth() {
   return PASTA_AUTH;
@@ -595,7 +600,14 @@ export async function qrComoImagem() {
 export async function pedirNovoCodigoPareamento() {
   const numeroBot = (process.env.NUMERO_BOT || '').replace(/\D/g, '');
   if (!sockAtual || !numeroBot) return null;
-  codigoPareamentoAtual = await sockAtual.requestPairingCode(numeroBot);
+  try {
+    codigoPareamentoAtual = await sockAtual.requestPairingCode(numeroBot);
+    erroPareamento = null;
+  } catch (erro) {
+    codigoPareamentoAtual = null;
+    erroPareamento = erro?.message || String(erro);
+    throw erro;
+  }
   console.log('NOVO CÓDIGO DE PAREAMENTO:', codigoPareamentoAtual, '(válido ~1 minuto)');
   return codigoPareamentoAtual;
 }
@@ -636,9 +648,17 @@ export async function iniciarWhatsApp() {
   }
 
   async function pedirCodigo(sock, numeroBot) {
-    const codigo = await sock.requestPairingCode(numeroBot, CODIGO_FIXO_VALIDO || undefined);
-    codigoPareamentoAtual = codigo;
-    registarCodigo(numeroBot, codigo, new Date());
+    try {
+      const codigo = await sock.requestPairingCode(numeroBot, CODIGO_FIXO_VALIDO || undefined);
+      codigoPareamentoAtual = codigo;
+      erroPareamento = null;
+      registarCodigo(numeroBot, codigo, new Date());
+    } catch (erro) {
+      codigoPareamentoAtual = null;
+      erroPareamento = erro?.message || String(erro);
+      console.warn('O WhatsApp recusou o pedido de código de pareamento:', erroPareamento);
+      console.warn('Usa o QR em /admin/parear — o caminho do QR não depende deste pedido.');
+    }
   }
 
   function iniciarPareamento(sock, numeroBot) {

@@ -7,7 +7,7 @@ import sqlite3 from 'sqlite3';
 import os from 'os';
 import fs from 'fs';
 import multer from 'multer';
-import { iniciarWhatsApp, processarSmsExterna, atribuirPagamentoPendente, desbloquearMembro, qrComoImagem, qrDePareamento, ultimoCodigoPareamento, pedirNovoCodigoPareamento, estadoLigacaoWhatsApp, pastaAuth } from './processador_mensagens.js';
+import { iniciarWhatsApp, processarSmsExterna, atribuirPagamentoPendente, desbloquearMembro, qrComoImagem, qrDePareamento, ultimoCodigoPareamento, pedirNovoCodigoPareamento, estadoLigacaoWhatsApp, pastaAuth, erroDePareamento } from './processador_mensagens.js';
 import { criarTabelas } from './init_db.js';
 
 fs.mkdirSync('public/tmp', { recursive: true });
@@ -116,6 +116,7 @@ app.get('/admin/parear', verificarLogin, async (req, res) => {
     qr,
     qrDisponivel: Boolean(qrDePareamento()),
     codigo: ultimoCodigoPareamento(),
+    erro: erroDePareamento(),
     estado: estadoLigacaoWhatsApp()
   });
 });
