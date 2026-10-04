@@ -7,17 +7,24 @@ import sqlite3 from 'sqlite3';
 import os from 'os';
 import fs from 'fs';
 import multer from 'multer';
-import { iniciarWhatsApp, processarSmsExterna, atribuirPagamentoPendente, desbloquearMembro, qrComoImagem, qrDePareamento, ultimoCodigoPareamento, pedirNovoCodigoPareamento, estadoLigacaoWhatsApp } from './processador_mensagens.js';
+import { iniciarWhatsApp, processarSmsExterna, atribuirPagamentoPendente, desbloquearMembro, qrComoImagem, qrDePareamento, ultimoCodigoPareamento, pedirNovoCodigoPareamento, estadoLigacaoWhatsApp, pastaAuth } from './processador_mensagens.js';
 import { criarTabelas } from './init_db.js';
 
 fs.mkdirSync('public/tmp', { recursive: true });
 const upload = multer({
   dest: 'public/tmp/',
-  limits: { fileSize: 10 * 1024 * 1024 }, 
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     console.log('Multer a receber ficheiro:', file.originalname, file.mimetype);
     cb(null, /^image\/(png|jpe?g|webp)$/.test(file.mimetype));
   }
+});
+
+const NOME_PERMITIDO_SESSAO = /^[a-z0-9][a-z0-9._-]*\.json$/i;
+
+const uploadSessao = multer({
+  dest: 'public/tmp/',
+  limits: { fileSize: 5 * 1024 * 1024, files: 60 }
 });
 
 const SESSION_SECRET = process.env.SESSION_SECRET;
@@ -120,6 +127,43 @@ app.post('/admin/parear/codigo', verificarLogin, async (req, res) => {
     console.error('Erro ao gerar novo código de pareamento:', erro);
   }
   res.redirect('/admin/parear');
+});
+
+app.get('/admin/sessao', verificarLogin, (req, res) => {
+  res.render('sessao', { pasta: pastaAuth(), estado: estadoLigacaoWhatsApp() });
+});
+
+app.post('/admin/sessao', verificarLogin, (req, res) => {
+  uploadSessao.array('ficheiros', 60)(req, res, (erroUpload) => {
+    if (erroUpload) {
+      console.error('Erro no upload da sessão:', erroUpload);
+      return res.status(400).send('Erro no upload: ' + erroUpload.message);
+    }
+    const ficheiros = req.files || [];
+    if (!ficheiros.length) {
+      return res.status(400).send('Nenhum ficheiro recebido.');
+    }
+    const destino = pastaAuth();
+    const rejeitados = [];
+    let gravados = 0;
+    try {
+      fs.mkdirSync(destino, { recursive: true });
+      for (const ficheiro of ficheiros) {
+        if (!NOME_PERMITIDO_SESSAO.test(ficheiro.originalname)) {
+          rejeitados.push(ficheiro.originalname);
+          fs.unlinkSync(ficheiro.path);
+          continue;
+        }
+        fs.renameSync(ficheiro.path, destino + '/' + ficheiro.originalname);
+        gravados++;
+      }
+    } catch (erro) {
+      console.error('Erro ao gravar a sessão:', erro);
+      return res.status(500).send('Erro ao gravar: ' + erro.message);
+    }
+    console.log(`Sessão carregada: ${gravados} ficheiros em ${destino}. Reinicia o serviço para usar.`);
+    res.redirect('/admin/sessao');
+  });
 });
 
 app.get('/admin', verificarLogin, async (req, res) => {

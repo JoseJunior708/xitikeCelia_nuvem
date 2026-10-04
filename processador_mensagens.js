@@ -571,8 +571,13 @@ export async function atribuirPagamentoPendente(idTransacao, numeroAlvo) {
 }
 
 let sockAtual = null;
+const PASTA_AUTH = process.env.AUTH_DIR || 'auth_info';
 let qrAtual = null;
 let codigoPareamentoAtual = null;
+
+export function pastaAuth() {
+  return PASTA_AUTH;
+}
 
 export function qrDePareamento() {
   return qrAtual;
@@ -669,7 +674,7 @@ export async function iniciarWhatsApp() {
 
     await fecharSocket();
 
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info');
+    const { state, saveCreds } = await useMultiFileAuthState(PASTA_AUTH);
     const { version } = await fetchLatestBaileysVersion();
     console.log('Usando versão do protocolo WhatsApp:', version.join('.'));
     const sock = makeWASocket({ auth: state, version, printQRInTerminal: false });
@@ -699,8 +704,8 @@ export async function iniciarWhatsApp() {
         console.log('Conexão do WhatsApp fechada. Código:', codigo);
 
         if (codigo === DisconnectReason.loggedOut) {
-          fs.rm('auth_info', { recursive: true, force: true }, (erro) => {
-            if (erro) console.error('Não consegui limpar auth_info:', erro);
+          fs.rm(PASTA_AUTH, { recursive: true, force: true }, (erro) => {
+            if (erro) console.error('Não consegui limpar a pasta de sessão:', erro);
             console.log('Sessão expirada. Reconectando em 15 segundos...');
             tentativasReconectar = 0;
             setTimeout(conectar, 15000);
