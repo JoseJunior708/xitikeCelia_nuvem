@@ -572,9 +572,17 @@ export async function atribuirPagamentoPendente(idTransacao, numeroAlvo) {
 
 let sockAtual = null;
 const PASTA_AUTH = process.env.AUTH_DIR || 'auth_info';
+const SESSAO_PERSISTENTE = Boolean(process.env.AUTH_DIR);
 let qrAtual = null;
 let codigoPareamentoAtual = null;
 let erroPareamento = null;
+
+console.log('Sessão do WhatsApp guardada em:', PASTA_AUTH);
+if (SESSAO_PERSISTENTE) {
+  console.log('AUTH_DIR está definido — a sessão sobrevive a reinícios e deploys, desde que o caminho seja um disco montado.');
+} else {
+  console.log('AUTH_DIR não está definido: a sessão vive no disco do sistema e PERDE-SE a cada reinício ou deploy. Em cloud, define AUTH_DIR num disco persistente.');
+}
 
 export function erroDePareamento() {
   return erroPareamento;
@@ -582,6 +590,10 @@ export function erroDePareamento() {
 
 export function pastaAuth() {
   return PASTA_AUTH;
+}
+
+export function sessaoPersistente() {
+  return SESSAO_PERSISTENTE;
 }
 
 export function qrDePareamento() {

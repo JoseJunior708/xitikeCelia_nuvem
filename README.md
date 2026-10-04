@@ -10,9 +10,37 @@ node init_db.js
 node index.js
 
 Na primeira vez, aparecer um QR code no terminal — escaneia com o WhatsApp
-(Aparelhos ligados > Ligar aparelho). Depois disso a sessão fica
+(Aparelhos ligands > Ligar aparelho). Depois disso a sessão fica
 guardada em `auth_info/` e não precisa escanear de novo.
-O painel web fica em `https://xitikecelia-nuvem.onrender.com'
+O painel web fica em `https://xitikecelia.onrender.com`
+
+## Sessão do WhatsApp no Render (importante)
+
+Por omissão a sessão vive no disco do sistema do Render, que é apagado em cada
+reinício, deploy ou quando o serviço adormece. Isso obriga a emparelhar de
+novo. Para evitar:
+
+1. Render > Disks > Create Disk. Mount path: `/var/data`. Tamanho mínimo: 1 GB.
+2. Render > Environment: `AUTH_DIR=/var/data/auth_info`.
+3. Reinicia o serviço.
+
+O log de arranque diz onde está a sessão e se é persistente:
+
+```
+Sessão do WhatsApp guardada em: /var/data/auth_info
+AUTH_DIR está definido — a sessão sobrevive a reinícios e deploys
+```
+
+Se disser `AUTH_DIR não está definido`, a sessão não é persistente.
+
+Para injector uma sessão já pareada noutro sitio (por exemplo o teu PC), o
+painel tem `/admin/sessao`: carrega todos os `.json` de dentro de `auth_info`
+e reinicia o serviço.
+
+**Nunca commites a pasta `auth_info`** — está no `.gitignore` e é o que dá
+controlo total da conta. Se alguma vez for parar ao Git, o problema não se
+resolve apagando o ficheiro: tens de revogar o aparelho em
+WhatsApp > Aparelhos ligados.
 
 ## Comandos do bot (dentro do grupo de WhatsApp)
 
@@ -46,9 +74,9 @@ físico dela é que gera essa chamada.
 5. Ativa **Executar Imediatamente** e desativa **Perguntar Antes de Executar**
 6. Adiciona a ação **Obter Conteúdo de URL**
 7. Configura:
-   - URL: `https://https://xitikecelia-nuvem.onrender.com/api/gateway/sms`
+   - URL: `https://xitikecelia.onrender.com/api/gateway/sms`
    - Método: **POST**
-   - Cabeçalhos: `Authorization` → `xitike da9085b747b0313b56f9be82e474c2d920df68801a92957f` (o token está no `.env`, muda os dois lados juntos se alterares)
+   - Cabeçalhos: `Authorization` → `xitike <O_TEU_WEBHOOK_TOKEN>` (o valor está no `.env` como `WEBHOOK_TOKEN`; muda os dois lados juntos se alterares)
    - Corpo: **JSON**, com os campos:
      - `texto_sms` → variável "Conteúdo da Mensagem"
      - `remetente_sms` → variável "Remetente" (ou escreve manualmente "M-Pesa"/"eMola")

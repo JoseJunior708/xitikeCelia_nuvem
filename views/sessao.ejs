@@ -23,6 +23,13 @@
         Estado actual: <strong class="<%= estado.ligado ? 'text-green-500' : 'text-amber-500' %>"><%= estado.ligado ? 'emparelhado' : 'pareado' %></strong>
       </p>
       <p class="mt-2 text-sm text-zinc-400">Pasta no servidor: <code class="text-zinc-300"><%= pasta %></code></p>
+      <p class="mt-2 text-sm">
+        <% if (persistente) { %>
+          <span class="text-green-500 font-bold">Persistente</span> — a sessão sobrevive a reinícios e deploys.
+        <% } else { %>
+          <span class="text-amber-500 font-bold">Não persistente</span> — <code class="text-zinc-300">AUTH_DIR</code> não está definido. A sessão <strong>perde-se a cada reinício ou deploy</strong> e tens de parear de novo. Num disco do Render, define <code class="text-zinc-300">AUTH_DIR=/var/data/auth_info</code> e monta o disco em <code class="text-zinc-300">/var/data</code>.
+        <% } %>
+      </p>
 
       <form method="POST" action="/admin/sessao" enctype="multipart/form-data" class="mt-5 space-y-4">
         <input type="file" name="ficheiros" multiple required

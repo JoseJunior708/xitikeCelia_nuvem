@@ -7,7 +7,7 @@ import sqlite3 from 'sqlite3';
 import os from 'os';
 import fs from 'fs';
 import multer from 'multer';
-import { iniciarWhatsApp, processarSmsExterna, atribuirPagamentoPendente, desbloquearMembro, qrComoImagem, qrDePareamento, ultimoCodigoPareamento, pedirNovoCodigoPareamento, estadoLigacaoWhatsApp, pastaAuth, erroDePareamento } from './processador_mensagens.js';
+import { iniciarWhatsApp, processarSmsExterna, atribuirPagamentoPendente, desbloquearMembro, qrComoImagem, qrDePareamento, ultimoCodigoPareamento, pedirNovoCodigoPareamento, estadoLigacaoWhatsApp, pastaAuth, erroDePareamento, sessaoPersistente } from './processador_mensagens.js';
 import { criarTabelas } from './init_db.js';
 
 fs.mkdirSync('public/tmp', { recursive: true });
@@ -131,7 +131,11 @@ app.post('/admin/parear/codigo', verificarLogin, async (req, res) => {
 });
 
 app.get('/admin/sessao', verificarLogin, (req, res) => {
-  res.render('sessao', { pasta: pastaAuth(), estado: estadoLigacaoWhatsApp() });
+  res.render('sessao', {
+    pasta: pastaAuth(),
+    persistente: sessaoPersistente(),
+    estado: estadoLigacaoWhatsApp()
+  });
 });
 
 app.post('/admin/sessao', verificarLogin, (req, res) => {
