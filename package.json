@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node index.js",
     "init-db": "node init_db.js",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package || echo AVISO: o patch do Baileys nao aplicou. O bot vai iniciar mas o pareamento por QR vai falhar. Ver patches/README.md"
   },
   "dependencies": {
     "@hapi/boom": "^10.0.1",
