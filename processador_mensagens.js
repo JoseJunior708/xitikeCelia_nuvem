@@ -574,16 +574,29 @@ let sockAtual = null;
 export async function iniciarWhatsApp() {
   const db = await getDb();
   let tentativasReconectar = 0;
-  const MAX_TENTATIVAS = 10;
+  const MAX_TENTATIVAS = 30;
+  const CODIGO_RESTART_REQUIRED = 515;
 
   console.log('A aguardar estabilização do ambiente antes de conectar...');
   await new Promise(resolve => setTimeout(resolve, 10000));
+
+  async function fecharSocket() {
+    const anterior = sockAtual;
+    sockAtual = null;
+    if (!anterior) return;
+    try { anterior.ev.removeAllListeners('connection.update'); } catch { }
+    try { anterior.ev.removeAllListeners('creds.update'); } catch { }
+    try { anterior.ev.removeAllListeners('messages.upsert'); } catch { }
+    try { anterior.end(undefined); } catch { }
+  }
 
   async function conectar() {
     if (tentativasReconectar >= MAX_TENTATIVAS) {
       console.error('Muitas tentativas de reconexão. Reinicie manualmente.');
       return;
     }
+
+    await fecharSocket();
 
     const { state, saveCreds } = await useMultiFileAuthState('auth_info');
     const { version } = await fetchLatestBaileysVersion();
@@ -628,8 +641,15 @@ export async function iniciarWhatsApp() {
           return;
         }
 
+        if (codigo === CODIGO_RESTART_REQUIRED) {
+          tentativasReconectar = 0;
+          console.log('O WhatsApp pediu reinício da ligação (515). Reconectando em 3s...');
+          setTimeout(conectar, 3000);
+          return;
+        }
+
         tentativasReconectar++;
-        const delay = Math.min(120000 * tentativasReconectar, 300000);
+        const delay = Math.min(15000 * tentativasReconectar, 60000);
         console.log(`Reconectando em ${delay / 1000}s (tentativa ${tentativasReconectar}/${MAX_TENTATIVAS})...`);
         setTimeout(conectar, delay);
       } else if (connection === 'open') {
