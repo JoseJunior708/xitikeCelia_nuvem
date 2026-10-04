@@ -736,19 +736,18 @@ export async function iniciarWhatsApp() {
         console.log('Conexão do WhatsApp fechada. Código:', codigo);
 
         if (codigo === DisconnectReason.loggedOut) {
-          if (!sessaoEstavaPareada) {
-            // 401 durante uma tentativa de registo significa que o
-            // pareamento não completou — não que a sessão foi revogada.
-            // Apagar a pasta aqui destruía uma sessão boa por causa de uma
-            // falha de registo.
-            console.log('Pareamento não completou (401). A pasta de sessão foi mantida; a tentar de novo em 15s...');
-            tentativasReconectar = 0;
-            setTimeout(conectar, 15000);
-            return;
-          }
+          // Um 401 significa sempre que as credenciais servidas ao servidor
+          // não servem. Se a sessão estava pareada, foi revogada no telemóvel.
+          // Se não estava, o que ficou em auth_info é credencial a meio de um
+          // pareamento anterior — e o Baileys, ao ver creds.me, tenta "logging
+          // in" em vez de registar, ficando preso em 401 sem nunca mostrar QR.
+          // Nos dois casos limpar é o que desfaz a impasse.
+          const razao = sessaoEstavaPareada
+            ? 'Sessão expirada (revogada no telemóvel).'
+            : 'Credenciais a meio de um pareamento anterior recusadas.';
           fs.rm(PASTA_AUTH, { recursive: true, force: true }, (erro) => {
             if (erro) console.error('Não consegui limpar a pasta de sessão:', erro);
-            console.log('Sessão expirada. Reconectando em 15 segundos...');
+            console.log(razao, 'Pasta de sessão limpa. Reconectando em 15 segundos para parear de novo...');
             tentativasReconectar = 0;
             setTimeout(conectar, 15000);
           });
