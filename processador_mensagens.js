@@ -670,14 +670,14 @@ export async function iniciarWhatsApp() {
   await new Promise(resolve => setTimeout(resolve, 10000));
 
   function iniciarPareamento() {
-    // O caminho do código de 8 dígitos está limitado pelo WhatsApp
-    // ("rate-overlimit") e queimar esse limite não ajuda em nada: o QR é
-    // gerado automaticamente pelo protocolo e não precisa deste pedido.
-    // Só se pede código quando alguém clica no botão em /admin/parear.
+    // Só o QR. O caminho do código de 8 dígitos está bloqueado do lado do
+    // WhatsApp: responde rate-overlimit a pedidos repetidos e fecha a ligação
+    // com 1006 quando o pedido chega enquanto o registo por QR está em curso.
+    // O QR é gerado pelo protocolo, não precisa de pedido nenhum, e vale até
+    // ser lido — daí ser este o caminho usado.
     if (CODIGO_FIXO_VALIDO) {
       console.log('CODIGO_PAREAMENTO definido — o código de pareamento vai ser sempre', CODIGO_FIXO_VALIDO);
     }
-    console.log('Pareamento: usa o QR em /admin/parear. O código de 8 dígitos só a pedido.');
   }
 
   async function fecharSocket() {
@@ -719,16 +719,16 @@ export async function iniciarWhatsApp() {
 
       if (update.qr) {
         qrAtual = update.qr;
-        console.log('Novo QR de pareamento disponível em /admin/parear (imagem) — o QR não expira em 1 minuto.');
-        if (process.env.QR_NO_TERMINAL === '1') {
-          QRCode.toString(update.qr, { type: 'terminal', small: true }, (erro, texto) => {
-            if (!erro) console.log('\n' + texto + '\n');
-          });
-        }
+        console.log('Novo QR de pareamento — válido até ser lido. Também em /admin/parear.');
+        QRCode.toString(update.qr, { type: 'terminal', small: true }, (erro, texto) => {
+          if (!erro) console.log('\n' + texto + '\n');
+        });
       }
 
       if (connection === 'open') {
         qrAtual = null;
+        console.log('Xitike conectado ao WhatsApp.');
+        tentativasReconectar = 0;
       }
 
       if (connection === 'close') {
@@ -773,9 +773,6 @@ export async function iniciarWhatsApp() {
         const delay = Math.min(15000 * tentativasReconectar, 60000);
         console.log(`Reconectando em ${delay / 1000}s (tentativa ${tentativasReconectar}/${MAX_TENTATIVAS})...`);
         setTimeout(conectar, delay);
-      } else if (connection === 'open') {
-        console.log('Xitike conectado ao WhatsApp.');
-        tentativasReconectar = 0;
       }
     });
 
