@@ -701,8 +701,15 @@ export async function iniciarWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState(PASTA_AUTH);
     const { version } = await fetchLatestBaileysVersion();
     console.log('Usando versão do protocolo WhatsApp:', version.join('.'));
-    const sock = makeWASocket({ auth: state, version, printQRInTerminal: false });
+    const sock = makeWASocket({ auth: state, version, printQRInTerminal: false, qrTimeout: 60000 });
     sockAtual = sock;
+
+    sock.ws.on('close', (codigoWs, motivoWs) => {
+      console.log('Ligação WebSocket fechada. Código WS:', codigoWs, '| Motivo:', motivoWs?.toString() || '(vazio)');
+    });
+    sock.ws.on('error', (erroWs) => {
+      console.log('Erro na WebSocket:', erroWs?.message || erroWs);
+    });
 
     const sessaoEstavaPareada = Boolean(state.creds.registered);
 
@@ -762,11 +769,22 @@ export async function iniciarWhatsApp() {
         }
 
         if (codigo === DisconnectReason.timedOut) {
-          console.log('Tempo esgotado a parear (408). Se nãopareares em 2 minutos o QR é descartado e começa outro — usa /admin/parear.');
+          console.log('O WhatsApp esgotiou os QR codes desta ligação (408) — são 6 por ligação e cada rotação gasta um.');
         }
 
         if (codigo === DisconnectReason.connectionReplaced) {
           console.log('Outra instância do bot tomou conta desta sessão (440). Fecha o outro processo antes de continuar.');
+        }
+
+        if (!sessaoEstavaPareada) {
+          // Ainda estamos a parear: cada ligação nova traz 6 QR codes frescos.
+          // Não faz sentido accrue backoff nem contar isto como falha — é o
+          // ciclo normal de pareamento e é assim que se consegue ler o QR a
+          //calma, mesmo depois de a pool anterior ficar sem refs.
+          tentativasReconectar = 0;
+          console.log('A pedir uma ligação nova para ter QR codes frescos (5s)...');
+          setTimeout(conectar, 5000);
+          return;
         }
 
         tentativasReconectar++;
