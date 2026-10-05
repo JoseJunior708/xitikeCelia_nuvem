@@ -211,22 +211,38 @@ async function tratarMensagem(sock, db, msg) {
 
   if (!texto) return;
 
-  const ehAdmin = NUMEROS_AUTORIZADOS.includes(normalizarNumero(remetente));
+const ehAdmin = NUMEROS_AUTORIZADOS.includes(normalizarNumero(remetente));
   console.log(`Mensagem de ${remetente} (normalizado: ${normalizarNumero(remetente)} ehAdmin: ${ehAdmin}${msg.key.participant?.endsWith('@lid') ? ' [participant original era LID: ' + msg.key.participant + ']' : ''}`);
 
-  if (texto.startsWith('!novo')) {
-    if (!ehAdmin) {
-      await sock.sendMessage(idConversa, { text: 'Só um administrador pode criar um novo xitique.' });
+  // Os comandos chegam como o utilizador os escreve num telemóvel: o teclado
+  // do iPhone capitaliza a letra a seguir a "!" e o WhatsApp também aceita
+  // "/" para comandos. Comparar o texto exacto fazia "!Resumo" e "/resumo"
+  // caírem em silêncio.
+  const primeiraLinha = texto.split('\n')[0].trim();
+  const semBarra = primeiraLinha.startsWith('/') ? primeiraLinha.slice(1) : primeiraLinha;
+  const semExclamacao = semBarra.startsWith('!') ? semBarra.slice(1) : semBarra;
+  const corte = semExclamacao.search(/\s/);
+  const comando = (corte === -1 ? semExclamacao : semExclamacao.slice(0, corte)).toLowerCase();
+  const argumentos = semExclamacao.slice(corte === -1 ? semExclamacao.length : corte).trim().split(/\s+/).filter(Boolean);
+
+  if (argumentos.length > 0 && !ehAdmin) {
+    const COMANDOS_ADMIN = ['novo', 'cadastrar', 'pagos', 'atribuir', 'banir', 'bloqueados', 'desbloquear', 'pendentes'];
+    if (COMANDOS_ADMIN.includes(comando)) {
+      await sock.sendMessage(idConversa, {
+        text: `Esse comando é só para administradores. O teu número (${normalizarNumero(remetente)}) não está na lista de autorizados.`
+      });
       return;
     }
+  }
+
+  if (comando === 'novo') {
     if (!ehGrupo) {
       await sock.sendMessage(idConversa, { text: 'Este comando só funciona dentro de um grupo do WhatsApp. cria/abre o grupo primeiro, adiciona o bot, e digita !novo lá dentro.' });
       return;
     }
-    const partes = texto.split(' ').filter(Boolean);
-    const nome = partes[1];
-    const valor = parseFloat(partes[2]);
-    const dias = parseInt(partes[3], 10);
+    const nome = argumentos[0];
+    const valor = parseFloat(argumentos[1]);
+    const dias = parseInt(argumentos[2], 10);
 
     if (!nome || Number.isNaN(valor) || Number.isNaN(dias)) {
       await sock.sendMessage(idConversa, {
@@ -244,7 +260,7 @@ async function tratarMensagem(sock, db, msg) {
     return;
   }
 
-  if (texto === '!ajuda') {
+  if (comando === 'ajuda') {
     await sock.sendMessage(idConversa, {
       text:
         'Comandos do Xitike:\n' +
@@ -254,7 +270,7 @@ async function tratarMensagem(sock, db, msg) {
         '!atribuir IDTransacao 840000000 — atribui manualmente um pagamento pendente a um membro (admin)\n' +
         '!banir 840000000 — remove um membro do grupo manualmente (admin)\n' +
         '!bloqueados — lista quem foi sinalizado por reciclar comprovativo (admin)\n' +
-        '!desbloquear   840000000 — tira alguém da lista de sinalizados (admin)\n' +
+        '!desbloquear 840000000 — tira alguém da lista de sinalizados (admin)\n' +
         '!pendentes — lista pagamentos que a Célia ainda precisa atribuir\n' +
         '!resumo — mostra a situação de cada membro\n' +
         'Cliente: cola aqui a tua SMS de confirmação de pagamento (M-Pesa/e-Mola).\n' +
@@ -278,9 +294,8 @@ async function tratarMensagem(sock, db, msg) {
     [remetente, idConversa, nomeContato]
   );
 
-  if (texto.startsWith('!banir')) {
-    if (!ehAdmin) return;
-    const numeroAlvo = texto.split(' ').filter(Boolean)[1];
+  if (comando === 'banir') {
+    const numeroAlvo = argumentos[0];
     if (!numeroAlvo) {
       await sock.sendMessage(idConversa, { text: 'Uso correto: !banir 840000000' });
       return;
@@ -296,8 +311,7 @@ async function tratarMensagem(sock, db, msg) {
     return;
   }
 
-  if (texto === '!bloqueados') {
-    if (!ehAdmin) return;
+  if (comando === 'bloqueados') {
     const bloqueados = await db.all('SELECT * FROM membros_bloqueados WHERE id_grupo = ?', [idConversa]);
     if (bloqueados.length === 0) {
       await sock.sendMessage(idConversa, { text: 'Nenhum membro sinalizado.' });
@@ -308,24 +322,25 @@ async function tratarMensagem(sock, db, msg) {
     return;
   }
 
-  if (texto.startsWith('!desbloquear')) {
-    if (!ehAdmin) return;
-    const numeroAlvo = texto.split(' ').filter(Boolean)[1];
+  if (comando === 'desbloquear') {
+    const numeroAlvo = argumentos[0];
     if (!numeroAlvo) {
       await sock.sendMessage(idConversa, { text: 'Uso correto: !desbloquear 840000000' });
       return;
     }
     const jidAlvo = numeroAlvo.includes('@') ? numeroAlvo : `${numeroAlvo.replace(/\D/g, '')}@s.whatsapp.net`;
-    await db.run('DELETE FROM membros_bloqueados WHERE id_whatsapp = ? AND id_grupo = ?', [jidAlvo, idConversa]);
+    const removidos = await db.run('DELETE FROM membros_bloqueados WHERE id_whatsapp = ? AND id_grupo = ?', [jidAlvo, idConversa]);
+    if (!removidos.changes) {
+      await sock.sendMessage(idConversa, { text: `${numeroAlvo} não estava na lista de sinalizados.` });
+      return;
+    }
     await sock.sendMessage(idConversa, { text: `${numeroAlvo} removido da lista de sinalizados.` });
     return;
   }
 
-  if (texto.startsWith('!cadastrar')) {
-    if (!ehAdmin) return;
-    const partes = texto.split(' ').filter(Boolean);
-    const numeroAlvo = partes[1];
-    const nomeAlvo = partes.slice(2).join(' ');
+  if (comando === 'cadastrar') {
+    const numeroAlvo = argumentos[0];
+    const nomeAlvo = argumentos.slice(1).join(' ');
     if (!numeroAlvo || !nomeAlvo) {
       await sock.sendMessage(idConversa, { text: 'Uso correto: !cadastrar 840000000 Nome Completo' });
       return;
@@ -340,12 +355,14 @@ async function tratarMensagem(sock, db, msg) {
     return;
   }
 
-  if (texto.startsWith('!pagos')) {
-    if (!ehAdmin) return;
-    const linhas = texto.split('\n').slice(1).map(l => l.trim()).filter(Boolean);
+  if (comando === 'pagos') {
+    const linhas = [
+      ...texto.split('\n').slice(1).map(l => l.trim()).filter(Boolean),
+      ...(argumentos.length > 1 ? [argumentos.join(' ')] : [])
+    ];
     if (linhas.length === 0) {
       await sock.sendMessage(idConversa, {
-        text: 'Uso correto (uma linha por membro):\n!pagos\n840000000 Nome Completo 100\n840000000 Outro Nome 100'
+        text: 'Uso correto (uma linha por membro):\n!pagos\n840000000 Nome Completo 100\n840000000 Outro Nome 100\nOu um de cada vez: !pagos 840000000 Nome Completo 100'
       });
       return;
     }
@@ -380,8 +397,7 @@ async function tratarMensagem(sock, db, msg) {
     return;
   }
 
-  if (texto === '!pendentes') {
-    if (!ehAdmin) return;
+  if (comando === 'pendentes') {
     const pendentes = await db.all('SELECT * FROM pagamentos_pendentes WHERE id_grupo = ?', [idConversa]);
     const aguardandoSms = await db.all('SELECT * FROM reivindicacoes_pendentes WHERE id_grupo = ?', [idConversa]);
 
@@ -403,23 +419,19 @@ async function tratarMensagem(sock, db, msg) {
     return;
   }
 
-  if (texto.startsWith('!atribuir')) {
-    if (!ehAdmin) return;
-    const partes = texto.split(' ').filter(Boolean);
-    const idTransacao = partes[1];
-    const numeroAlvo = partes[2];
+  if (comando === 'atribuir') {
+    const idTransacao = argumentos[0];
+    const numeroAlvo = argumentos[1];
     if (!idTransacao || !numeroAlvo) {
       await sock.sendMessage(idConversa, { text: 'Uso correto: !atribuir IDTransacao 840000000' });
       return;
     }
     const resultado = await atribuirPagamentoPendente(idTransacao, numeroAlvo);
-    if (!resultado.ok) {
-      await sock.sendMessage(idConversa, { text: resultado.motivo });
-    }
+    await sock.sendMessage(idConversa, { text: resultado.ok ? resultado.mensagem || 'Pagamento atribuído.' : resultado.motivo });
     return;
   }
 
-  if (texto === '!resumo') {
+  if (comando === 'resumo') {
     const lista = await gerarListaChecklist(db, idConversa, grupo.valor_diario);
     await sock.sendMessage(idConversa, { text: `Situação do xitique "${grupo.nome_grupo}":\n${lista}` });
     return;
